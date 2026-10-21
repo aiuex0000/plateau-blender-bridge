@@ -24,3 +24,6 @@ _runs/
 *.err
 .build-nusamai/
 tools/nusamai/nusamai.exe
+dist-next/
+build-next/
+dist-old/

@@ -203,6 +203,7 @@ def generate(req:AutoRequest, *, log:Log=print, cancel:CancelToken|None=None, ca
     texture_reports=[]
     textures_bytes=0
     downloaded_bytes=0
+    seen_digests={}
     for index,source in enumerate(sources,1):
         if cancel: cancel.check()
         log(f'[DOWNLOAD {index}/{len(sources)}] {source.city} / mesh {source.mesh}')
@@ -210,6 +211,12 @@ def generate(req:AutoRequest, *, log:Log=print, cancel:CancelToken|None=None, ca
             path=source_download(source,work/'downloads',cancel=cancel)
         else:
             path=source_download(source,work/'downloads')
+        # Ward-border meshes ship byte-identical GMLs in each ward's dataset; converting both doubles buildings.
+        digest=hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest in seen_digests:
+            log(f'[DEDUP] {source.city} の mesh {source.mesh} は {seen_digests[digest]} と同一内容のため除外')
+            continue
+        seen_digests[digest]=source.city
         downloaded_bytes+=path.stat().st_size
         if downloaded_bytes>req.max_download_mb*1024*1024:
             raise ValueError(f'合計ダウンロードが上限 {req.max_download_mb}MiB を超えました。入力範囲を狭めてください')

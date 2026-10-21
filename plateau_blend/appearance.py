@@ -66,7 +66,7 @@ def resolve_asset(gml_url: str, reference: str) -> Asset:
     return Asset(reference,url,result)
 
 
-def referenced_images(gml_file: Path, gml_url: str, *, max_images: int=96) -> list[Asset]:
+def referenced_images(gml_file: Path, gml_url: str, *, max_images: int=1000) -> list[Asset]:
     """Streaming XML parse, recognizes namespaced app:imageURI as local-name imageURI."""
     with gml_file.open('rb') as stream:
         first=stream.read(65536)
@@ -124,7 +124,7 @@ def _download_asset(asset: Asset, target: Path, *, opener, max_file_bytes: int, 
 
 
 def stage_gml(source: Source, downloaded_gml: Path, root: Path, *, opener=None,
-              max_images: int=96, max_total_mb: int=120, log=print, cancel=None) -> tuple[Path, dict]:
+              max_images: int=1000, max_total_mb: int=120, log=print, cancel=None) -> tuple[Path, dict]:
     """Stage a single GML + dependent images, resumable per-file on a future call.
 
     Return staged GML path and report. Same-source cache entries validate digest;

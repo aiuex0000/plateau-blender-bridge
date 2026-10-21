@@ -152,4 +152,42 @@ class AutoTests(unittest.TestCase):
             self.assertTrue((root/'scene.work'/'auto'/'acquisition.json').is_file())
             self.assertTrue(any('[DONE]' in x for x in logs))
 
+    def test_identical_gml_from_two_wards_is_converted_once(self):
+        # Shinjuku/Shibuya both publish mesh 53394525 with byte-identical content.
+        from plateau_blend.gsi import GsiTiles
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            (root/'blender.exe').write_bytes(b'x'); (root/'nusamai.exe').write_bytes(b'x')
+            center=Transformer.from_crs(4326,6674,always_xy=True).transform(135.43,34.82)
+            records=[{'cityCode':code,'cityName':name,'year':2025,
+                      'files':{'bldg':[{'url':f'https://assets.cms.plateau.reearth.io/{code}/mock.gml',
+                                         'code':'52350401','maxLod':1,'fileSize':100}]}}
+                     for code,name in (('13104','新宿区'),('13113','渋谷区'))]
+            def fake_download(source,out):
+                out.mkdir(parents=True,exist_ok=True)
+                file=out/f'{source.city}.gml';file.write_text('<CityModel/>')
+                return file
+            converted=[]
+            def fake_convert(binary,gmls,dest,epsg,lod,log):
+                converted.extend(gmls)
+                dest.mkdir(parents=True,exist_ok=True)
+                obj=dest/'buildings.obj';x,y=center
+                obj.write_text(f'v {x-10} {y-10} 5\nv {x+10} {y-10} 5\nv {x} {y+10} 30\nf 1 2 3\n')
+                return [obj]
+            def fakeopen(request,timeout=30):
+                image=Image.new('RGB',(256,256),(120,130,170) if 'seamlessphoto' in request.full_url else (0,4,210))
+                buf=io.BytesIO();image.save(buf,format='PNG')
+                return Response(buf.getvalue(),request.full_url)
+            def fake_build(config,**kw):
+                config.output_blend.parent.mkdir(parents=True,exist_ok=True)
+                config.output_blend.write_bytes(b'BLENDER mock')
+                return config.output_blend
+            req=AutoRequest('r:135.429,34.819,135.431,34.821','EPSG:6674',root/'scene.blend',
+                            blender_executable=root/'blender.exe',nusamai_executable=root/'nusamai.exe',terrain_resolution=24,photo_zoom=14)
+            logs=[]
+            generate(req,log=logs.append,catalogue_fetch=lambda c:records,source_download=fake_download,
+                     converter=fake_convert,blender_runner=fake_build,tile_factory=lambda r:GsiTiles(r,opener=fakeopen))
+            self.assertEqual(len(converted),1)
+            self.assertTrue(any('[DEDUP]' in x for x in logs))
+
 if __name__=='__main__':unittest.main()
