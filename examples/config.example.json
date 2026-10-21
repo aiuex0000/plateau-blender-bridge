@@ -1,0 +1,17 @@
+{
+  "blender_executable": "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe",
+  "building_objs": ["C:/PLATEAU/objs/buildings.obj"],
+  "terrain_objs": ["C:/PLATEAU/objs/dem.obj"],
+  "aerial_png": "C:/PLATEAU/imagery/aerial.png",
+  "world_file": "C:/PLATEAU/imagery/aerial.pgw",
+  "epsg": "EPSG:6674",
+  "image_epsg": "EPSG:6674",
+  "building_axis": "xyz",
+  "terrain_axis": "xyz",
+  "output_blend": "C:/PLATEAU/outputs/ikeda_scene.blend",
+  "imagery_attribution": "国土地理院（地理院タイル）。使用した写真により追加出典が必要",
+  "imagery_terms_url": "https://maps.gsi.go.jp/help/use.html",
+  "allow_partial_imagery": false,
+  "allow_suspect_imagery": false,
+  "pack_image": true
+}

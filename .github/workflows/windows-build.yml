@@ -1,0 +1,41 @@
+name: Windows standalone application
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+      - name: Install build-time dependencies
+        run: python -m pip install --upgrade pip setuptools wheel pyinstaller pyinstaller-hooks-contrib .
+      - name: Windows tests using legacy Windows code page
+        env:
+          PYTHONUTF8: '0'
+        run: python -m unittest discover -s tests -v
+      - name: Build self-contained application
+        run: python -m PyInstaller --noconfirm --clean packaging/plateau_bridge.spec
+      - name: Verify bundled Python, geodesy data and Blender scripts
+        shell: pwsh
+        run: |
+          & 'dist/PLATEAU-Blender-Bridge/PLATEAU-Blender-Bridge.exe' --self-check 'frozen-check.json'
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled exe self check failed' }
+          $report = Get-Content 'frozen-check.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          if (-not $report.passed) { throw 'Bundle requirements missing' }
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/PLATEAU-Blender-Bridge' -DestinationPath 'PLATEAU-Blender-Bridge-v0.10-win-x64.zip' -CompressionLevel Optimal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PLATEAU-Blender-Bridge-v0.10-win-x64
+          path: PLATEAU-Blender-Bridge-v0.10-win-x64.zip
+          if-no-files-found: error
