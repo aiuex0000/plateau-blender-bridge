@@ -4,7 +4,7 @@
 OS：Windows 11 Pro 10.0.26200
 Python（ビルド環境のみ）：3.13.12 x64（uv venv `.build-venv`）、PyInstaller 6.22.3、Pillow 12.3.0、pyproj 3.8.0
 Blender：`C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`（5.2.2 LTS）
-nusamai CLI：未導入（公式リリースにWindows用CLIバイナリが無い。後述）
+nusamai CLI：v0.1.19 をソースからビルドして同梱（下記）
 
 1. ビルド（build_windows.batと同じ手順を手動実行）：成功。`dist\PLATEAU-Blender-Bridge\` 69.5MB（onedir）
    - 単体テスト：`PYTHONUTF8=0` で 85件成功（v0.10の84件＋圧縮.blend回帰1件）。v0.9のWindows失敗2件は解消済み
@@ -21,7 +21,23 @@ nusamai CLI：未導入（公式リリースにWindows用CLIバイナリが無�
 7. PLATEAUプレビュー（`r:135.429,34.819,135.431,34.821`）：成功
    - 池田市 2025年度、メッシュ52351384、bldg GML 1件（87,297,191 bytes、max_lod 2）
    - 写真z16 1タイル（94×114px）、DEM 1タイル位置、地形8,484頂点
-8. 本番小範囲：未実施（nusamai CLI待ち）
+8. 本番小範囲：**成功**（EXE `--cli`、`r:135.429,34.819,135.431,34.821`、max_lod / 写真z16 / DEM100、約30秒）
+   - 出力：`_runs\ikeda\ikeda.blend` ＋ `ikeda.provenance.json`。再読込検証合格
+   - 切り出し：206,415面 → 5,511面、約184×223m（EPSG:6674）
+   - 高さ：建物頂点z − 地形z は min −1.86m / p10 −0.61m / 中央値 6.49m / max 26.27m。建物は地面にほぼ接地（PLATEAUとGSIの鉛直基準差の範囲）
+   - 位置：切り出しOBJ（投影座標）の水平面を、PGWつき航空写真へ直接描画して一致を確認（約1画素≒2m以内）。`docs/verify_2026-10-21/ikeda_overlay.png`
+   - 描画：`ikeda_oblique.png` / `ikeda_top.png`（地形の縞模様はEEVEEの影アクネで、検証用ライトの設定によるもの）
+
+## nusamai CLI（同梱）
+
+- 公式にWindows用CLIが無いため、`MIERUNE/plateau-gis-converter` v0.1.19（`a038cff`）を cargo 1.99 でビルド（6分30秒、37.4MB）。`build_nusamai.bat` がタグ固定でclone→build→`tools\nusamai\` に配置。MITライセンス文を `LICENSE-nusamai.txt` として同梱
+- 配布物では `dist\PLATEAU-Blender-Bridge\tools\nusamai\nusamai.exe`。`find_nusamai` は環境変数の次にこれを優先。frozen self-checkは同梱nusamaiを必須にした
+- 実測したv0.1.19のOBJ仕様（ソースと実データの両方で確認）
+  - `center_at_origin` が**既定true**（重心を原点へ移動）→ `-o center_at_origin=false` を必須で付与
+  - 出力は常に**Y-up `[東, 高さ, −北]`** → 変換直後に `(a,b,c)→(a,−c,b)` へ回転（`converter.yup_to_zup`、回転なので面の向き・UVは不変）。池田市で東 −52,642〜−51,436 / 北 −131,143〜−130,165 を確認
+  - `min_lod` はLOD0の足元平面で高さが全部0 → 既定LODを `max_lod` に変更（GUI・CLI・AutoRequest）
+  - `textured_max_lod` は外観画像フォルダが無いと `NotFound` でpanic（GML単体での試験時）。Bridge経由（画像を揃えた状態）での確認は未実施
+- 変換キャッシュ署名の版を3→4へ（旧版の重心移動済みOBJを再利用しない）
 
 ## 未解決・気づき
 

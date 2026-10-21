@@ -26,3 +26,13 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True,
           debug=False, strip=False, upx=False)
 coll = COLLECT(exe, a.binaries, a.datas,
                strip=False, upx=False, name='PLATEAU-Blender-Bridge')
+
+# nusamai CLI (MIT) has no official Windows build; build_windows.bat compiles it into
+# tools/nusamai. It sits beside the exe (not in _internal) so users can see/replace it.
+import shutil
+tools = root / 'tools' / 'nusamai'
+if (tools / 'nusamai.exe').is_file():
+    dest = Path(DISTPATH) / 'PLATEAU-Blender-Bridge' / 'tools' / 'nusamai'
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in tools.iterdir():
+        if f.is_file(): shutil.copy2(f, dest / f.name)

@@ -21,7 +21,10 @@ def self_check(destination: Path) -> int:
         missing=[f for f in files if not (module_dir/f).is_file()]
         coords=Transformer.from_crs(4326,6674,always_xy=True).transform(135.43,34.82)
         tcl_version=tk.Tcl().eval('info patchlevel')
-        status={'passed':not missing and all(map(lambda x:abs(x)<1e7,coords)),
+        from plateau_blend.discovery import bundled_nusamai
+        nusamai=bundled_nusamai()
+        status={'passed':bool(nusamai) and not missing and all(map(lambda x:abs(x)<1e7,coords)),
+                'bundled_nusamai':str(nusamai) if nusamai else None,
                 'bundled_blender_scripts':files,'missing_scripts':missing,
                 'proj_data_found':(Path(datadir.get_data_dir())/'proj.db').is_file(),
                 'image_library':'Pillow','tcl_version':tcl_version,'coordinate_sample':coords}

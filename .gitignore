@@ -22,3 +22,5 @@ frozen-check.json
 _runs/
 *.out
 *.err
+.build-nusamai/
+tools/nusamai/nusamai.exe

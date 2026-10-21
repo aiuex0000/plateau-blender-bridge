@@ -15,8 +15,32 @@ def command(binary: Path, inputs: list[Path], out_dir: Path, lod: str = 'texture
         raise ValueError('LODモードが不正')
     if not inputs or any(p.suffix.lower() != '.gml' for p in inputs):
         raise ValueError('CityGML入力は1件以上の.gmlファイル')
+    # nusamai >= 0.1.19 recentres OBJ on its centroid by default; keep surveyed coordinates.
     return [str(binary), *(str(p) for p in inputs), '--sink', 'obj', '--output', str(out_dir),
-            '-t', f'use_lod={lod}', '-o', 'limit_texture_resolution=true', '-o', f'split={str(split).lower()}']
+            '-t', f'use_lod={lod}', '-o', 'limit_texture_resolution=true', '-o', f'split={str(split).lower()}',
+            '-o', 'center_at_origin=false']
+
+
+def yup_to_zup(path: Path) -> int:
+    """Rewrite one nusamai OBJ in place from its Y-up [x, z, -y] layout to Z-up [x, y, z].
+
+    This is a proper rotation (det +1): face winding and UVs stay valid, normals rotate alike.
+    Only call on files inside our own converter output folder, never on user inputs.
+    """
+    tmp = path.with_name(path.name + '.zup.tmp')
+    count = 0
+    with path.open('r', encoding='utf-8-sig', errors='replace') as inp, tmp.open('w', encoding='utf-8', newline='\n') as out:
+        for line in inp:
+            if line.startswith(('v ', 'vn ')):
+                p = line.split()
+                a, b, c = map(float, p[1:4])
+                p[1:4] = (format(a, '.12g'), format(-c, '.12g'), format(b, '.12g'))
+                out.write(' '.join(p) + '\n')
+                count += line.startswith('v ')
+            else:
+                out.write(line)
+    tmp.replace(path)
+    return count
 
 
 def main(argv=None):

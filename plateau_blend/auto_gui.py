@@ -69,7 +69,7 @@ class AutoGui(tk.Tk):
         self.scan_button=ttk.Button(container,text='Blender / CLIを再スキャン',command=self.scan_dependencies)
         self.scan_button.grid(row=row,column=1,sticky='w',pady=(0,7));row+=1
         self.epsg=tk.StringVar(value='AUTO')
-        self.lod=tk.StringVar(value='min_lod')
+        self.lod=tk.StringVar(value='max_lod')
         self.zoom=tk.StringVar(value='16')
         self.dem_res=tk.StringVar(value='100')
         self.axis=tk.StringVar(value='auto')

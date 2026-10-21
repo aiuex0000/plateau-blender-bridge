@@ -16,7 +16,7 @@ from pyproj import CRS, Transformer
 from .config import Config
 from .catalog import Source, fetch_catalog, select_sources, download
 from .appearance import stage_gml
-from .converter import command as converter_command
+from .converter import command as converter_command, yup_to_zup
 from .discovery import find_blender, find_nusamai
 from .gsi import GsiTiles, make_terrain, reproject_photo, xy_bounds_of_obj
 from .obj import inspect_obj, union_bbox, missing_material_images, obj_dependencies
@@ -37,7 +37,7 @@ class AutoRequest:
     output_blend: Path
     blender_executable: Path|None=None
     nusamai_executable: Path|None=None
-    lod: str='min_lod'
+    lod: str='max_lod'  # min_lod is LOD0: flat footprints at height 0
     photo_zoom: int=16
     terrain_resolution: int=100
     max_gml_files: int=24
@@ -136,7 +136,7 @@ def converter_objects(binary:Path,gml_paths:list[Path],dest:Path,epsg:str,lod:st
     if cancel: cancel.check()
     if not binary.is_file(): raise FileNotFoundError(f'nusamai CLI実行ファイルがありません: {binary}')
     dest.mkdir(parents=True,exist_ok=True)
-    signature=hashlib.sha256(json.dumps({'version':3,'sources':[(str(x),x.stat().st_size,x.stat().st_mtime_ns) for x in gml_paths],
+    signature=hashlib.sha256(json.dumps({'version':4,'sources':[(str(x),x.stat().st_size,x.stat().st_mtime_ns) for x in gml_paths],
                                         'binary':(str(binary),binary.stat().st_size,binary.stat().st_mtime_ns),'epsg':epsg,'lod':lod},sort_keys=True).encode()).hexdigest()[:20]
     folder=dest/f'converted_{signature}'
     ready=folder/'conversion_ready.json'
@@ -165,6 +165,10 @@ def converter_objects(binary:Path,gml_paths:list[Path],dest:Path,epsg:str,lod:st
     run_logged(argv,logpath,log,cancel=cancel)
     objs=sorted(folder.rglob('*.obj'))
     if not objs: raise RuntimeError('変換結果にOBJが見つかりません: '+str(folder))
+    for obj in objs:
+        if cancel: cancel.check()
+        yup_to_zup(obj)
+    log(f'[CONVERTER] nusamaiのY-up OBJをZ-upへ回転: {len(objs)}件')
     objs,outputs=all_generated_files()
     cache_mark(ready,['converter-v4',signature],outputs,{'args':argv,'objs':[str(p) for p in objs]})
     return objs

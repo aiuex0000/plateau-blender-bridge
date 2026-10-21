@@ -10,6 +10,8 @@ if not exist ".build-venv\Scripts\python.exe" (
 )
 ".build-venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel pyinstaller pyinstaller-hooks-contrib .
 if errorlevel 1 exit /b 1
+call build_nusamai.bat
+if errorlevel 1 exit /b 1
 ".build-venv\Scripts\python.exe" -m unittest discover -s tests -v
 if errorlevel 1 exit /b 1
 ".build-venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean packaging\plateau_bridge.spec

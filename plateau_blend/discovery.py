@@ -79,8 +79,15 @@ def find_blender() -> Path | None:
     return candidates[0] if candidates else None
 
 
+def bundled_nusamai() -> Path | None:
+    """The CLI shipped next to the frozen exe (tools/nusamai), or in a source checkout."""
+    base = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
+    candidate = base / 'tools' / 'nusamai' / 'nusamai.exe'
+    return candidate if candidate.is_file() else None
+
+
 def find_nusamai() -> Path | None:
-    for value in (os.environ.get('NUSAMAI_EXE'), shutil.which('nusamai.exe'), shutil.which('nusamai')):
+    for value in (os.environ.get('NUSAMAI_EXE'), bundled_nusamai(), shutil.which('nusamai.exe'), shutil.which('nusamai')):
         if value and Path(value).is_file(): return Path(value).resolve()
     for root in _program_roots():
         for candidate in (root/'nusamai.exe',root/'Downloads'/'nusamai.exe',root/'Applications'/'nusamai.exe'):

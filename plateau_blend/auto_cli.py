@@ -15,7 +15,7 @@ def main(argv=None):
     p.add_argument('--output',required=False,type=Path)
     p.add_argument('--blender',type=Path)
     p.add_argument('--nusamai',type=Path)
-    p.add_argument('--lod',default='min_lod',choices=['min_lod','max_lod','textured_max_lod'])
+    p.add_argument('--lod',default='max_lod',choices=['min_lod','max_lod','textured_max_lod'])
     p.add_argument('--zoom',type=int,default=16)
     p.add_argument('--dem-resolution',type=int,default=100)
     p.add_argument('--preview',action='store_true')
