@@ -14,8 +14,11 @@ from .discovery import blender_candidates, find_nusamai
 from .runtime import CancelToken, CancelledError
 from .diagnostics import inspect_environment
 from .resources import forecast, enforce_budget
-from .auto import projected_selection
+from .auto import projected_selection, center_condition
 from .smoke import run_smoke
+
+CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
+CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は省略で400m）'
 
 
 class AutoGui(tk.Tk):
@@ -40,19 +43,19 @@ class AutoGui(tk.Tk):
         row=0
         ttk.Label(container,text='PLATEAUデータ → Blender 自動生成',font=('Yu Gothic UI',15,'bold')).grid(row=row,column=0,columnspan=3,sticky='w',pady=(0,8));row+=1
         ttk.Label(container,text='地域と画質を指定 → GML検索・取得 / OBJ変換 / DEM・航空写真取得 / .blend生成',wraplength=750).grid(row=row,column=0,columnspan=3,sticky='w');row+=1
-        self.mode=tk.StringVar(value='bbox')
+        self.mode=tk.StringVar(value='center')
         ttk.Label(container,text='地域の指定方法').grid(row=row,column=0,sticky='w',pady=4)
         opt=ttk.Frame(container)
         opt.grid(row=row,column=1,columnspan=2,sticky='w')
-        for label,value in [('緯度経度の矩形','bbox'),('地名','place'),('メッシュコード','mesh')]:
+        for label,value in [('中心点（Googleマップ）','center'),('緯度経度の矩形','bbox'),('メッシュコード','mesh')]:
             ttk.Radiobutton(opt,text=label,variable=self.mode,value=value,command=self.update_area).pack(side='left',padx=6)
         row+=1
-        self.area_label=ttk.Label(container,text='範囲 west,south,east,north')
+        self.area_label=ttk.Label(container,text=CENTER_LABEL)
         self.area_label.grid(row=row,column=0,sticky='w',pady=4)
         self.area=tk.StringVar(value='')
         self.area_entry=ttk.Entry(container,textvariable=self.area)
         self.area_entry.grid(row=row,column=1,columnspan=2,sticky='ew');row+=1
-        hint='例: 135.42,34.81,135.43,34.82 （西→東、南→北。狭い範囲から試す）'
+        hint=CENTER_HINT
         self.hint=ttk.Label(container,text=hint,foreground='#786129',wraplength=750)
         self.hint.grid(row=row,column=0,columnspan=3,sticky='w');row+=1
         self.blender_var=tk.StringVar()
@@ -69,8 +72,8 @@ class AutoGui(tk.Tk):
         self.scan_button=ttk.Button(container,text='Blender / CLIを再スキャン',command=self.scan_dependencies)
         self.scan_button.grid(row=row,column=1,sticky='w',pady=(0,7));row+=1
         self.epsg=tk.StringVar(value='AUTO')
-        self.lod=tk.StringVar(value='max_lod')
-        self.zoom=tk.StringVar(value='16')
+        self.lod=tk.StringVar(value='textured_max_lod')
+        self.zoom=tk.StringVar(value='18')
         self.dem_res=tk.StringVar(value='100')
         self.axis=tk.StringVar(value='auto')
         for label,var,values in [('平面直角座標系 EPSG（AUTOは地域にも対応）',self.epsg,None),
@@ -116,8 +119,8 @@ class AutoGui(tk.Tk):
 
     def update_area(self):
         mode=self.mode.get()
-        labels={'bbox':('範囲 west,south,east,north','例: 135.42,34.81,135.43,34.82（経度・緯度。小範囲から試す）'),
-                'place':('地名','例: 池田市 / 池田駅（地名検索は広範囲の結果を返す場合あり）'),
+        labels={'center':(CENTER_LABEL,CENTER_HINT),
+                'bbox':('範囲 west,south,east,north','例: 135.42,34.81,135.43,34.82（経度・緯度。小範囲から試す）'),
                 'mesh':('メッシュコード','例: 5235xxxx（6/8/9/10桁のメッシュ番号）')}
         title,hint=labels[mode];self.area_label.configure(text=title);self.hint.configure(text=hint)
         self.area.set('')
@@ -135,7 +138,7 @@ class AutoGui(tk.Tk):
         mode=self.mode.get()
         if mode=='bbox':condition='r:'+raw.replace(' ','')
         elif mode=='mesh':condition='m:'+raw.replace(' ','')
-        else:condition='g:'+raw
+        else:condition=center_condition(raw)
         return AutoRequest(condition=condition,epsg=self.epsg.get().strip(),
             output_blend=Path(self.output_var.get()).expanduser().resolve(),
             blender_executable=Path(self.blender_var.get()) if self.blender_var.get() else None,

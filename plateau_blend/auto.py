@@ -39,10 +39,10 @@ class AutoRequest:
     blender_executable: Path|None=None
     nusamai_executable: Path|None=None
     lod: str='max_lod'  # min_lod is LOD0: flat footprints at height 0
-    photo_zoom: int=16
+    photo_zoom: int=18  # z16 is ~2 m/px and smears streets; wide ranges downshift automatically
     terrain_resolution: int=100
     max_gml_files: int=24
-    max_download_mb: int=250
+    max_download_mb: int=600  # a 400 m square on a mesh corner in central Tokyo needs ~420 MiB
     include_dem_from_plateau: bool=False  # Experimental; GSI terrain is the default.
     axis_override: str = 'auto'
     clip_requested_area: bool = True
@@ -69,6 +69,20 @@ class AutoRequest:
         if self.max_texture_mb<1 or self.max_texture_mb>2048: raise ValueError('テクスチャ容量制限が不正')
         if self.max_gml_files<1 or self.max_gml_files>100 or self.max_download_mb<1:raise ValueError('ダウンロード制限値が不正')
         if self.include_dem_from_plateau:raise ValueError('PLATEAU DEM直接変換は実験中。現状はGSI標高タイルを使ってください')
+
+
+def center_condition(text:str, default_size_m:float=400.0)->str:
+    """'lat, lon[, size_m]' (Google Maps copy order) -> 'r:west,south,east,north' square."""
+    parts=[p for p in re.split(r'[\s,、]+',text.strip()) if p]
+    if len(parts) not in (2,3):raise ValueError('中心は「緯度, 経度」か「緯度, 経度, 一辺m」で指定してください')
+    lat,lon=float(parts[0]),float(parts[1])
+    size=float(parts[2]) if len(parts)==3 else default_size_m
+    if not (20<=lat<=46 and 122<=lon<=154):
+        raise ValueError('日本の緯度・経度ではありません（Googleマップのコピーは「緯度, 経度」の順です）')
+    if not 50<=size<=3000:raise ValueError('一辺は50〜3000mで指定してください')
+    half_lat=size/2/111_320
+    half_lon=size/2/(111_320*math.cos(math.radians(lat)))
+    return 'r:'+','.join(f'{v:.6f}' for v in (lon-half_lon,lat-half_lat,lon+half_lon,lat+half_lat))
 
 
 def projected_selection(condition: str, epsg: str) -> tuple[float,float,float,float] | None:
@@ -281,7 +295,7 @@ def generate(req:AutoRequest, *, log:Log=print, cancel:CancelToken|None=None, ca
     terrain=work/'generated'/'terrain_gsi.obj'
     # Cache elevation mesh keyed on bbox/quality (not only filename).
     terrain_meta=terrain.with_suffix('.json')
-    terrain_key=[list(xy),epsg,req.terrain_resolution,14]
+    terrain_key=[list(xy),epsg,req.terrain_resolution,14,'dem-v2']  # v2: bilinear DEM + fixed cell triangulation
     if cancel: cancel.check()
     if not cache_valid(terrain_meta,terrain_key,[terrain]):
         dem=make_terrain(tiles,xy,epsg,terrain,resolution=req.terrain_resolution,log=log)

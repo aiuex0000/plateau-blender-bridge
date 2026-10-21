@@ -14,6 +14,13 @@ class WorldFileTests(unittest.TestCase):
         self.assertAlmostEqual(wf.uv(100, 200, 10, 20)[1], 0.975)
         self.assertEqual(wf.sample_coverage((99, 181, 119, 201), 10, 10), 1.0)
 
+    def test_coverage_tolerates_micrometre_rounding_at_z18(self):
+        # Shinjuku z18: terrain OBJ rounded to 1 µm fell 9.6e-7 px outside and failed at 88.9 %.
+        wf = WorldFile(0.484856590702171, 0, 0, -0.48450375091013, -12972.9629012404, -34383.7367257944)
+        bbox = (-12973.20533, -34827.784414, -12610.5326, -34383.494474)
+        self.assertEqual(wf.sample_coverage(bbox, 748, 917), 1.0)
+        self.assertLess(wf.sample_coverage((bbox[0] - 1, *bbox[1:]), 748, 917), 1.0)
+
     def test_sheared_rotated_inverse(self):
         wf = WorldFile(0.4, -0.1, 0.04, -0.4, 1234.4, 5678.8)
         for col, row in [(0,0),(400,300),(-3.2,91.23)]:

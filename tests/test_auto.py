@@ -37,6 +37,13 @@ class AutoTests(unittest.TestCase):
         bad=src(2025);bad['files']['bldg'][0]['code']='../../x'
         with self.assertRaises(ValueError):select_sources([bad])
 
+    def test_catalog_counts_ward_border_twins_once(self):
+        ward=lambda code,size: {'cityCode':code,'cityName':code,'year':2025,
+                                'files':{'bldg':[{'url':f'https://assets.cms.plateau.reearth.io/{code}.gml',
+                                                  'code':'53394525','maxLod':2,'fileSize':size}]}}
+        self.assertEqual(len(select_sources([ward('13104',100),ward('13113',100)])),1)
+        self.assertEqual(len(select_sources([ward('13104',100),ward('13113',101)])),2)
+
     def test_catalog_supplements_missing_meshes_from_older_year(self):
         def row(year,meshes):
             return {'cityCode':'27204','cityName':'池田市','year':year,'registrationYear':year,
@@ -161,8 +168,8 @@ class AutoTests(unittest.TestCase):
             center=Transformer.from_crs(4326,6674,always_xy=True).transform(135.43,34.82)
             records=[{'cityCode':code,'cityName':name,'year':2025,
                       'files':{'bldg':[{'url':f'https://assets.cms.plateau.reearth.io/{code}/mock.gml',
-                                         'code':'52350401','maxLod':1,'fileSize':100}]}}
-                     for code,name in (('13104','新宿区'),('13113','渋谷区'))]
+                                         'code':'52350401','maxLod':1,'fileSize':None}]}}
+                     for code,name in (('13104','新宿区'),('13113','渋谷区'))]  # unknown sizes: only the hash can tell
             def fake_download(source,out):
                 out.mkdir(parents=True,exist_ok=True)
                 file=out/f'{source.city}.gml';file.write_text('<CityModel/>')

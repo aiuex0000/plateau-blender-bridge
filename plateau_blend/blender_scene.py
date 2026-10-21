@@ -83,6 +83,8 @@ def add_terrain_uv(obj, wf, wh, mat):
             uv.data[li].uv = local_uv(float(co.x), float(co.y), wf, wh[0], wh[1])
     mesh.materials.clear()
     mesh.materials.append(mat)
+    # Flat-shaded grid triangles on diagonal slopes read as comb teeth; terrain is a smooth surface.
+    mesh.polygons.foreach_set('use_smooth', [True] * len(mesh.polygons))
 
 
 def main():

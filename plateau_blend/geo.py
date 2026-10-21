@@ -50,7 +50,8 @@ class WorldFile:
                 x = xmin + (xmax - xmin) * ix / (grid - 1)
                 y = ymin + (ymax - ymin) * iy / (grid - 1)
                 col, row = self.pixel(x, y)
-                if -0.5 - 1e-6 <= col <= width - 0.5 + 1e-6 and -0.5 - 1e-6 <= row <= height - 0.5 + 1e-6:
+                # 1e-3 px: OBJ vertices are written at 1 µm, which exceeds 1e-6 px at GSI z18 (~0.48 m/px).
+                if -0.5 - 1e-3 <= col <= width - 0.5 + 1e-3 and -0.5 - 1e-3 <= row <= height - 0.5 + 1e-3:
                     inside += 1
         return inside / (grid * grid)
 

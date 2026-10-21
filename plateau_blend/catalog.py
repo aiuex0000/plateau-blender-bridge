@@ -77,7 +77,7 @@ class Source:
 
 
 def select_sources(records: list[dict], kind: str = 'bldg', *, max_files: int = 24,
-                   max_known_mb: int = 250) -> list[Source]:
+                   max_known_mb: int = 600) -> list[Source]:
     # A city's newest *dataset* may omit meshes available in earlier years.
     # Prefer the newest year PER (city code, mesh) and supplement missing
     # mesh cells from historical releases. Preserve survey year in provenance.
@@ -108,8 +108,12 @@ def select_sources(records: list[dict], kind: str = 'bldg', *, max_files: int = 
     seen=set()
     for key in sorted(newest):
         source=newest[key][1]
-        if source.url in seen:continue
+        # Ward-border meshes are republished byte-identically by each ward (e.g. Shinjuku/Shibuya);
+        # same mesh+year+size is fetched once. auto.generate still dedups by content hash.
+        twin=(source.mesh,source.year,source.size) if source.size else None
+        if source.url in seen or (twin and twin in seen):continue
         seen.add(source.url)
+        if twin: seen.add(twin)
         sources.append(source)
     if not sources: raise ValueError(f'指定範囲に {kind} データが見つかりません')
     known = sum(s.size or 0 for s in sources)
@@ -118,7 +122,7 @@ def select_sources(records: list[dict], kind: str = 'bldg', *, max_files: int = 
     return sources
 
 
-def download(source: Source, dest_root: Path, *, opener=None, max_file_mb: int = 150, cancel=None) -> Path:
+def download(source: Source, dest_root: Path, *, opener=None, max_file_mb: int = 300, cancel=None) -> Path:
     """Atomic streaming download with one retry-on-next-run cache. Untrusted redirects denied."""
     opener = opener or _safe_open
     if cancel: cancel.check()

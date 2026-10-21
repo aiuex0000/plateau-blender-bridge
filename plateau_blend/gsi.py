@@ -136,13 +136,26 @@ class GsiTiles:
         if image is None:return None
         return image.getpixel((min(255,int((a-tx)*256)),min(255,int((b-ty)*256))))
 
+    def _dem_at(self,layer:str,z:int,px:int,py:int) -> float|None:
+        tx,ty=px//256,py//256
+        image=self.get(layer,z,tx,ty)
+        if image is None:return None
+        return decode_dem(*image.getpixel((px-tx*256,py-ty*256))[:3])
+
     def height(self,lon:float,lat:float,z=14) -> float|None:
+        # Bilinear between DEM pixel centres. Nearest-pixel sampling made ~8 m terraces at z14
+        # whose risers stretched the aerial photo into streaks.
+        a,b=fractional_tile(lon,lat,z)
+        gx,gy=a*256-0.5,b*256-0.5
+        x0,y0=floor(gx),floor(gy);fx,fy=gx-x0,gy-y0
         for layer in DEM_SOURCES:
             if layer=='dem_png' and z>14: continue
-            pix=self.pixel(layer,lon,lat,z)
-            if pix is None: continue
-            h=decode_dem(*pix)
-            if h is not None: return h
+            h00,h10,h01,h11=(self._dem_at(layer,z,x0+dx,y0+dy) for dy in (0,1) for dx in (0,1))
+            if None not in (h00,h10,h01,h11):
+                return (h00*(1-fx)+h10*fx)*(1-fy)+(h01*(1-fx)+h11*fx)*fy
+            # Next to no-data, keep the nearest valid pixel rather than invent a slope.
+            nearest=(h11 if fx>=0.5 else h01) if fy>=0.5 else (h10 if fx>=0.5 else h00)
+            if nearest is not None: return nearest
         return None
 
 
@@ -234,8 +247,9 @@ def make_terrain(tiles:GsiTiles,bounds:tuple[float,float,float,float],epsg:str,
             f.write(f'v {x:.6f} {y:.6f} {z:.3f}\n')
         for j in range(ny):
             for i in range(nx):
+                # 1-based corners of cell (i,j): a+1, a+2 on row j; a+nx+2, a+nx+3 on row j+1.
                 a=j*(nx+1)+i
-                f.write(f'f {a+1} {a+2} {a+nx+2}\nf {a+1} {a+nx+2} {a+nx+1}\n')
+                f.write(f'f {a+1} {a+2} {a+nx+3}\nf {a+1} {a+nx+3} {a+nx+2}\n')
     log(f'[GSI DEM] {nx}x{ny} cells; valid samples {coverage:.1%}')
     return {'samples':[nx+1,ny+1],'valid_ratio':coverage,'zoom':zoom,
             'attribution':ATTRIBUTION,'terms':TERMS}
