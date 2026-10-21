@@ -45,3 +45,15 @@ nusamai CLI：v0.1.19 をソースからビルドして同梱（下記）
 - `console=False` のため `--cli` はリダイレクトしないと出力が見えない。リダイレクト時の文字コードはcp932（地名がUTF-8想定のツールで化ける）
 - Blender 5.2で `Material.use_nodes` がDeprecationWarning（6.0で削除予定）。今は動作に影響なし
 - GUIの進捗バーが待機中にも小さく緑で表示される（見た目のみ）
+
+## テクスチャ付きLOD（textured_max_lod）
+
+9. 同じ矩形で `--lod textured_max_lod`：**修正2件の後に成功**（約18秒、`_runs\ikeda_tex2\ikeda_tex.blend`、再読込検証合格）
+   - 1回目：`画像が96件を超えました` で停止。メッシュGML（約1km四方）全体の外観画像746枚を集めようとしていた
+     - 対応：`plateau_blend/subset.py` を追加。矩形指定（切り出しあり）の時、変換前にGMLを矩形＋約50m周辺の建物（cityObjectMember単位）へ絞り、全体appearanceも残った面を指すtargetだけ残す。テキストのまま要素単位で残す/捨てるので名前空間や数値は原文どおり。元GMLは読み取りのみ
+     - 池田市：建物3,937→372棟、画像746→45枚、2秒。nusamai変換も2.6秒→0.3秒
+   - 2回目：生成は成功したが、テクスチャの無い建物が描画に出ない。分割出力で数えると372棟中327棟が**面ゼロ**
+     - 原因：nusamai v0.1.19の `TexturedHighest` のバグ（探索中に元の木を削る）。詳細と差分は `patches/README.md`
+     - 対応：同梱nusamaiにパッチを当てて再ビルド（`build_nusamai.bat` がclone直後に `git apply`）。修正後は空0棟、切り出し後5,511面で `max_lod` と一致
+   - 最終：埋め込み画像2枚（航空写真＋nusamaiのテクスチャアトラス1枚）、建物マテリアル2（アトラス付き1・無地1）。LOD2の外観付きビル群と、LOD1の無地の建物が同じ範囲にそろう（`docs/verify_2026-10-21/ikeda_textured_oblique.png`、修正前は `ikeda_textured_before_patch.png`）
+   - テスト：90件成功（絞り込み3件、Y-up回転・引数2件を追加）

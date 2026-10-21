@@ -1,0 +1,16 @@
+diff --git a/nusamai/src/transformer/transform/lods.rs b/nusamai/src/transformer/transform/lods.rs
+index bde8e07..a37d605 100644
+--- a/nusamai/src/transformer/transform/lods.rs
++++ b/nusamai/src/transformer/transform/lods.rs
+@@ -43,7 +43,10 @@ impl Transform for FilterLodTransform {
+                 // Creating a reverse-order iterator with ev
+                 for lod in (0..=highest_available_lod).rev() {
+                     if available_lods.0 & (1 << lod) != 0 {
+-                        edit_tree(&mut entity.root, lod);
++                        // Probe on a copy: editing entity.root here strips the other LODs, so an
++                        // untextured building would fall back to an already-emptied tree.
++                        let mut probe = entity.root.clone();
++                        edit_tree(&mut probe, lod);
+ 
+                         let has_textures = {
+                             let appearance = entity.appearance_store.read().unwrap();

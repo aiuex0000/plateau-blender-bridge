@@ -21,6 +21,7 @@ from .discovery import find_blender, find_nusamai
 from .gsi import GsiTiles, make_terrain, reproject_photo, xy_bounds_of_obj
 from .obj import inspect_obj, union_bbox, missing_material_images, obj_dependencies
 from .clip import cached_clip
+from .subset import subset_gml
 from .crs import resolve_epsg
 from .pipeline import run
 from .artifact_cache import valid as cache_valid, mark as cache_mark
@@ -212,6 +213,13 @@ def generate(req:AutoRequest, *, log:Log=print, cancel:CancelToken|None=None, ca
         downloaded_bytes+=path.stat().st_size
         if downloaded_bytes>req.max_download_mb*1024*1024:
             raise ValueError(f'合計ダウンロードが上限 {req.max_download_mb}MiB を超えました。入力範囲を狭めてください')
+        if req.condition.startswith('r:') and req.clip_requested_area:
+            # A mesh GML covers ~1 km; keep nearby buildings so textures/conversion stay small.
+            path,cut=subset_gml(path,work/'subset',tuple(map(float,req.condition[2:].split(','))))
+            if cut['members_total']:
+                log(f"[SUBSET] 範囲周辺の建物 {cut['members_kept']}/{cut['members_total']}、テクスチャ {cut['textures_kept']} 面グループ")
+            else:
+                log('[SUBSET] 建物要素を判別できないため、GML全体を使用')
         if req.lod=='textured_max_lod':
             staged,texture_report=stage_gml(source,path,work/'citygml',max_total_mb=req.max_texture_mb,log=log,cancel=cancel)
             gmls.append(staged)
