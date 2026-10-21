@@ -17,6 +17,7 @@ from .artifact_cache import valid as cache_valid, mark as cache_mark
 from .verification import validate_report
 
 Log = Callable[[str], None]
+BLEND_MAGICS = (b'BLENDER', b'\x28\xb5\x2f\xfd', b'\x1f\x8b')  # raw, zstd, gzip
 
 
 def _bbox2(s: tuple[float, ...]) -> tuple[float, float, float, float]:
@@ -252,8 +253,9 @@ def run(config: Config, *, overwrite_output: bool = False, log: Log = print,
     if not stage_blend.exists() or stage_blend.stat().st_size < 7:
         raise RuntimeError(f'Blender出力が存在しません: {stage_blend}')
     with stage_blend.open('rb') as f:
-        if f.read(7) != b'BLENDER':
-            raise RuntimeError('出力の先頭がBLENDERではありません（破損の可能性）')
+        # compress=True saves zstd-wrapped .blend (Blender 3.0+); older gzip also exists.
+        if not f.read(7).startswith(BLEND_MAGICS):
+            raise RuntimeError('出力の先頭が.blend（BLENDER/zstd/gzip）ではありません（破損の可能性）')
     if cancel: cancel.check()
     # A valid BLENDER magic header does NOT prove the scene can be re-opened.
     # Check a second, independent Blender process before publishing the file.

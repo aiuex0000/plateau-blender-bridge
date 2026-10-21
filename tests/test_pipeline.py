@@ -41,6 +41,28 @@ def load_config(d, payload):
     return Config.load(f)
 
 
+PASSING_MOCK_BLENDER="""#!/usr/bin/env python3
+import json,sys,pathlib
+p=pathlib.Path(sys.argv[-1]); m=json.loads((p.parent/'manifest.json').read_text(encoding='utf-8'))
+assert m['terrain'] and m['buildings']
+if 'verify_' in p.name:
+  def union(kind):
+    b=[x['expected_bbox_local'] for x in m[kind]]
+    return [min(x[i] for x in b) if i<3 else max(x[i] for x in b) for i in range(6)]
+  report={'schema':1,'loaded_blend':m['target_blend'],'provenance_present':True,
+          'crs':m['crs'],'origin_xyz':m['origin_xyz'],'buildings_bbox':union('buildings'),
+          'terrain_bbox':union('terrain'),'buildings_mesh_count':1,'terrain_mesh_count':1,
+          'terrain_uv_mesh_count':1,'file_images':1,'packed_file_images':1,
+          'terrain_textured_mesh_count':1,'terrain_bad_uv_mesh_count':0,
+          'building_textured_sources':[]}
+  p.write_text(json.dumps(report))
+else:
+  for entry in m['terrain']+m['buildings']:
+    assert pathlib.Path(entry['path']).is_file()
+  pathlib.Path(m['target_blend']).write_bytes(b'BLENDER-FAKE')
+"""
+
+
 class PipelineTests(unittest.TestCase):
     def test_preflight(self):
         with tempfile.TemporaryDirectory() as td:
@@ -100,26 +122,7 @@ else:
     def test_mock_process_creates_blend_and_preserves_sources(self):
         with tempfile.TemporaryDirectory() as td:
             d=Path(td); data=example(d)
-            fake=fake_blender_binary(d,"""#!/usr/bin/env python3
-import json,sys,pathlib
-p=pathlib.Path(sys.argv[-1]); m=json.loads((p.parent/'manifest.json').read_text(encoding='utf-8'))
-assert m['terrain'] and m['buildings']
-if 'verify_' in p.name:
-  def union(kind):
-    b=[x['expected_bbox_local'] for x in m[kind]]
-    return [min(x[i] for x in b) if i<3 else max(x[i] for x in b) for i in range(6)]
-  report={'schema':1,'loaded_blend':m['target_blend'],'provenance_present':True,
-          'crs':m['crs'],'origin_xyz':m['origin_xyz'],'buildings_bbox':union('buildings'),
-          'terrain_bbox':union('terrain'),'buildings_mesh_count':1,'terrain_mesh_count':1,
-          'terrain_uv_mesh_count':1,'file_images':1,'packed_file_images':1,
-          'terrain_textured_mesh_count':1,'terrain_bad_uv_mesh_count':0,
-          'building_textured_sources':[]}
-  p.write_text(json.dumps(report))
-else:
-  for entry in m['terrain']+m['buildings']:
-    assert pathlib.Path(entry['path']).is_file()
-  pathlib.Path(m['target_blend']).write_bytes(b'BLENDER-FAKE')
-""")
+            fake=fake_blender_binary(d,PASSING_MOCK_BLENDER)
             data['blender_executable']=str(fake)
             config=load_config(d,data)
             before={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in [d/'b.obj',d/'t.obj',d/'image.png',d/'image.pgw']}
@@ -131,5 +134,17 @@ else:
             with self.assertRaises(FileExistsError): run(config,log=log.append)
             run(config,overwrite_output=True,log=log.append)
             self.assertTrue(any('[CACHE]' in s for s in log))
+
+    def test_header_check_accepts_compressed_blend_only(self):
+        # Real Blender 5.x writes zstd-wrapped files because blender_scene saves with compress=True.
+        script=PASSING_MOCK_BLENDER
+        for header,ok in ((b'\\x28\\xb5\\x2f\\xfd-zstd',True),(b'NOTBLEND-junk',False)):
+            with self.subTest(header=header), tempfile.TemporaryDirectory() as td:
+                d=Path(td); data=example(d)
+                data['blender_executable']=str(fake_blender_binary(d,script.replace("b'BLENDER-FAKE'","b'"+header.decode()+"'")))
+                if ok: self.assertTrue(run(load_config(d,data),log=lambda *_:None).is_file())
+                else:
+                    with self.assertRaisesRegex(RuntimeError,'破損'):
+                        run(load_config(d,data),log=lambda *_:None)
 
 if __name__=='__main__': unittest.main()

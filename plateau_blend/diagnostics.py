@@ -30,9 +30,12 @@ def inspect_environment(*, blender:Path|None=None, nusamai:Path|None=None,
     report={'python':sys.version.split()[0],
             'blender':_version(blender) if check_versions else {'found':bool(blender and blender.is_file()),'path':str(blender) if blender else None},
             'nusamai':_version(nusamai) if check_versions else {'found':bool(nusamai and nusamai.is_file()),'path':str(nusamai) if nusamai else None}}
-    for package in ('Pillow','pyproj'):
+    for package,module in (('Pillow','PIL'),('pyproj','pyproj')):
         try: report[package]=importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError: report[package]=None
+        except importlib.metadata.PackageNotFoundError:
+            # PyInstaller bundles omit dist-info; the module still knows its version.
+            try: report[package]=getattr(__import__(module),'__version__',None)
+            except ImportError: report[package]=None
     if output:
         root=output.expanduser().resolve().parent
         while not root.exists() and root != root.parent:root=root.parent
