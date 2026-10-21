@@ -18,7 +18,7 @@ from .auto import projected_selection, center_condition
 from .smoke import run_smoke
 
 CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
-CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は省略で400m）'
+CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は省略で400m。矩形の4つの数字を貼ってもOK）'
 
 
 class AutoGui(tk.Tk):

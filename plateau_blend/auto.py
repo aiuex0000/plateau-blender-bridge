@@ -12,6 +12,7 @@ import math
 import re
 import subprocess
 import shutil
+import unicodedata
 from pyproj import CRS, Transformer
 from .config import Config
 from .catalog import Source, fetch_catalog, select_sources, download
@@ -71,14 +72,44 @@ class AutoRequest:
         if self.include_dem_from_plateau:raise ValueError('PLATEAU DEM直接変換は実験中。現状はGSI標高タイルを使ってください')
 
 
+def _is_lat(v:float)->bool: return 20<=v<=46
+def _is_lon(v:float)->bool: return 122<=v<=154
+
+
 def center_condition(text:str, default_size_m:float=400.0)->str:
-    """'lat, lon[, size_m]' (Google Maps copy order) -> 'r:west,south,east,north' square."""
-    parts=[p for p in re.split(r'[\s,、]+',text.strip()) if p]
-    if len(parts) not in (2,3):raise ValueError('中心は「緯度, 経度」か「緯度, 経度, 一辺m」で指定してください')
-    lat,lon=float(parts[0]),float(parts[1])
-    size=float(parts[2]) if len(parts)==3 else default_size_m
-    if not (20<=lat<=46 and 122<=lon<=154):
-        raise ValueError('日本の緯度・経度ではありません（Googleマップのコピーは「緯度, 経度」の順です）')
+    """Lenient Japan-only area input -> 'r:west,south,east,north'.
+
+    Accepts 'lat, lon[, size_m]' (Google Maps copy), either order (lat/lon ranges in Japan do not
+    overlap), full-width digits, DMS ('35°41'22.6"N 139°41'30.1"E'), a Google Maps URL ('@lat,lon,'),
+    and four numbers as an already-made rectangle (a pasted r: range).
+    """
+    raw=text
+    text=unicodedata.normalize('NFKC',text).strip()
+    if text.startswith('r:'): text=text[2:]
+    url=re.search(r'@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)',text)
+    dms=re.findall(r'(\d+)\s*°\s*(\d+)\s*[\'′]\s*(\d+(?:\.\d+)?)\s*(?:"|″|\'\')?\s*([NSEW])',text)
+    if url:
+        nums=[float(url.group(1)),float(url.group(2))]
+    elif len(dms)==2:
+        nums=[int(d)+int(m)/60+float(s)/3600 for d,m,s,_ in dms]
+    else:
+        nums=[float(n) for n in re.findall(r'-?\d+(?:\.\d+)?',text)]
+    shown=raw.strip()[:60]
+    if len(nums)==4:
+        a,b,c,d=nums
+        if _is_lon(a) and _is_lat(b) and _is_lon(c) and _is_lat(d): west,south,east,north=a,b,c,d
+        elif _is_lat(a) and _is_lon(b) and _is_lat(c) and _is_lon(d): south,west,north,east=a,b,c,d
+        else: raise ValueError(f'4つの数字を矩形として読めません: 「{shown}」')
+        west,east=sorted((west,east));south,north=sorted((south,north))
+        if east-west<1e-5 or north-south<1e-5: raise ValueError(f'矩形の幅がありません: 「{shown}」')
+        return 'r:'+','.join(f'{v:.6f}' for v in (west,south,east,north))
+    if len(nums) not in (2,3):
+        raise ValueError(f'中心は「緯度, 経度」か「緯度, 経度, 一辺m」で指定してください（入力: 「{shown}」）')
+    lat,lon=nums[0],nums[1]
+    if _is_lon(lat) and _is_lat(lon): lat,lon=lon,lat
+    size=nums[2] if len(nums)==3 else default_size_m
+    if not (_is_lat(lat) and _is_lon(lon)):
+        raise ValueError(f'日本の緯度・経度ではありません（入力: 「{shown}」）')
     if not 50<=size<=3000:raise ValueError('一辺は50〜3000mで指定してください')
     half_lat=size/2/111_320
     half_lon=size/2/(111_320*math.cos(math.radians(lat)))
