@@ -34,6 +34,15 @@ class CenterConditionTests(unittest.TestCase):
         self.same_center('35°41\'22.6"N 139°41\'30.1"E')           # Google Maps DMS
         self.same_center('https://www.google.com/maps/@35.6896,139.6917,17z')
 
+    def test_swap_is_reported_not_silent(self):
+        # Master decided (2026-10-27): swap lon-first input, and show that it was swapped.
+        notes=[]
+        center_condition('139.6917, 35.6896',notes=notes)
+        self.assertEqual(notes,['経度・緯度の順と判断して、緯度 35.6896・経度 139.692 として使います'])
+        notes=[]
+        center_condition('35.6896, 139.6917',notes=notes)
+        self.assertEqual(notes,[])
+
     def test_four_numbers_are_a_rectangle(self):
         # Master pasted the old r: range into the centre box (2026-10-21).
         self.assertEqual(center_condition('139.690,35.686,139.694,35.690'),'r:139.690000,35.686000,139.694000,35.690000')

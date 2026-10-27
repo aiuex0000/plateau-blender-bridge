@@ -76,7 +76,7 @@ def _is_lat(v:float)->bool: return 20<=v<=46
 def _is_lon(v:float)->bool: return 122<=v<=154
 
 
-def center_condition(text:str, default_size_m:float=400.0)->str:
+def center_condition(text:str, default_size_m:float=400.0, notes:list[str]|None=None)->str:
     """Lenient Japan-only area input -> 'r:west,south,east,north'.
 
     Accepts 'lat, lon[, size_m]' (Google Maps copy), either order (lat/lon ranges in Japan do not
@@ -106,7 +106,10 @@ def center_condition(text:str, default_size_m:float=400.0)->str:
     if len(nums) not in (2,3):
         raise ValueError(f'中心は「緯度, 経度」か「緯度, 経度, 一辺m」で指定してください（入力: 「{shown}」）')
     lat,lon=nums[0],nums[1]
-    if _is_lon(lat) and _is_lat(lon): lat,lon=lon,lat
+    if _is_lon(lat) and _is_lat(lon):
+        lat,lon=lon,lat
+        # Tell the user which order was assumed instead of swapping silently.
+        if notes is not None: notes.append(f'経度・緯度の順と判断して、緯度 {lat:g}・経度 {lon:g} として使います')
     size=nums[2] if len(nums)==3 else default_size_m
     if not (_is_lat(lat) and _is_lon(lon)):
         raise ValueError(f'日本の緯度・経度ではありません（入力: 「{shown}」）')

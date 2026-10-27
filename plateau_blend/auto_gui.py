@@ -1,11 +1,13 @@
 """User-facing automatic acquisition UI. Tkinter only, pipeline in a worker thread."""
 from __future__ import annotations
+import dataclasses
 import json
 import os
 import queue
 import subprocess
 import sys
 import threading
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
@@ -16,9 +18,47 @@ from .diagnostics import inspect_environment
 from .resources import forecast, enforce_budget
 from .auto import projected_selection, center_condition
 from .smoke import run_smoke
+from .catalog import NoPlateauData
 
 CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
-CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は省略で400m。矩形の4つの数字を貼ってもOK）'
+CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は下の選択を使用。矩形の4つの数字もOK）'
+PLACE_PRESETS=(
+    ('東京タワー','35.6586, 139.7454','400'),
+    ('東京スカイツリー','35.7101, 139.8107','400'),
+    ('新宿駅西口','35.6905, 139.6995','200'),
+    ('渋谷スクランブル交差点','35.6595, 139.7005','200'),
+    ('東京駅 丸の内','35.6812, 139.7671','400'),
+    ('富士山 山頂','35.3606, 138.7274','800'),
+    ('横浜 みなとみらい','35.4575, 139.6320','400'),
+    ('大阪城','34.6873, 135.5262','400'),
+    ('京都駅','34.9858, 135.7588','400'),
+    ('広島 原爆ドーム','34.3955, 132.4536','400'),
+)
+STAGES=(
+    (('[CATALOG]','[PLAN]','[CRS]'),'データを探しています'),
+    (('[CONVERTER]','[SUBSET]','[CLIP]','[DEDUP]','[AXIS]','[BBOX]','[TEXTURE'),'建物を準備しています'),
+    (('[GSI DEM]','[GSI PHOTO]'),'地形と写真を準備しています'),
+    (('[BLENDER]','[OBJ]','[VERIFY]','[CHECK]'),'Blenderで保存・確認しています'),
+)
+
+
+def stage_for(line:str,current:int)->int:
+    for stage,(prefixes,_) in enumerate(STAGES,1):
+        if line.startswith(prefixes):return max(current,stage)
+    return current
+
+
+def free_output_path(path:Path)->Path:
+    """Never overwrite: pick scene_2.blend, scene_3.blend ... next to an existing file."""
+    if not path.exists():return path
+    n=2
+    while (candidate:=path.with_name(f'{path.stem}_{n}{path.suffix}')).exists():n+=1
+    return candidate
+
+
+def user_error(exc:Exception)->str:
+    if isinstance(exc,NoPlateauData):return str(exc)
+    return f'{type(exc).__name__}: {exc}'
 
 
 class AutoGui(tk.Tk):
@@ -30,6 +70,7 @@ class AutoGui(tk.Tk):
         self.queue=queue.Queue()
         self.vars={}
         self.running=False
+        self.generate_stage=0
         self.cancel_token=None
         self.last_result:Path|None=None
         self.create_widgets()
@@ -37,85 +78,105 @@ class AutoGui(tk.Tk):
         self.after(250,self.scan_dependencies)
 
     def create_widgets(self):
-        container=ttk.Frame(self,padding=12)
-        container.pack(expand=True,fill='both')
-        container.columnconfigure(1,weight=1)
-        row=0
-        ttk.Label(container,text='PLATEAUデータ → Blender 自動生成',font=('Yu Gothic UI',15,'bold')).grid(row=row,column=0,columnspan=3,sticky='w',pady=(0,8));row+=1
-        ttk.Label(container,text='地域と画質を指定 → GML検索・取得 / OBJ変換 / DEM・航空写真取得 / .blend生成',wraplength=750).grid(row=row,column=0,columnspan=3,sticky='w');row+=1
+        canvas=tk.Canvas(self,highlightthickness=0)
+        scrollbar=ttk.Scrollbar(self,orient='vertical',command=canvas.yview)
+        scrollbar.pack(side='right',fill='y');canvas.pack(side='left',expand=True,fill='both')
+        canvas.configure(yscrollcommand=scrollbar.set)
+        container=ttk.Frame(canvas,padding=12)
+        window=canvas.create_window((0,0),window=container,anchor='nw')
+        container.bind('<Configure>',lambda event:canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>',lambda event:canvas.itemconfigure(window,width=event.width))
+        container.columnconfigure(0,weight=1)
+        ttk.Label(container,text='好きな街を3Dにしよう',font=('Yu Gothic UI',16,'bold')).grid(row=0,column=0,sticky='w')
+        ttk.Label(container,text='場所と広さを選んで、Blenderで開ける街を作ります。').grid(row=1,column=0,sticky='w',pady=(0,8))
+        place=ttk.LabelFrame(container,text='① 場所を選ぶ',padding=8)
+        place.grid(row=2,column=0,sticky='ew');place.columnconfigure(0,weight=1)
+        ttk.Button(place,text='Googleマップで場所を探す',command=lambda:webbrowser.open('https://www.google.com/maps')).grid(row=0,column=0,sticky='w')
+        ttk.Label(place,text='地図を右クリック → 座標の数字をクリックしてコピー → 下に貼り付け',wraplength=700).grid(row=1,column=0,sticky='w')
         self.mode=tk.StringVar(value='center')
-        ttk.Label(container,text='地域の指定方法').grid(row=row,column=0,sticky='w',pady=4)
-        opt=ttk.Frame(container)
-        opt.grid(row=row,column=1,columnspan=2,sticky='w')
-        for label,value in [('中心点（Googleマップ）','center'),('緯度経度の矩形','bbox'),('メッシュコード','mesh')]:
-            ttk.Radiobutton(opt,text=label,variable=self.mode,value=value,command=self.update_area).pack(side='left',padx=6)
-        row+=1
-        self.area_label=ttk.Label(container,text=CENTER_LABEL)
-        self.area_label.grid(row=row,column=0,sticky='w',pady=4)
+        ttk.Label(place,text='有名な場所から選ぶ').grid(row=2,column=0,sticky='w')
+        self.preset=ttk.Combobox(place,values=tuple(p[0] for p in PLACE_PRESETS),state='readonly')
+        self.preset.grid(row=3,column=0,sticky='ew')
+        self.preset.bind('<<ComboboxSelected>>',self.apply_preset)
+        self.applying_preset=False
+        modes=ttk.Frame(place);modes.grid(row=4,column=0,sticky='w')
+        for label,value in [('中心点','center'),('矩形','bbox'),('メッシュコード','mesh')]:
+            ttk.Radiobutton(modes,text=label,variable=self.mode,value=value,command=self.update_area).pack(side='left',padx=4)
+        self.area_label=ttk.Label(place,text=CENTER_LABEL);self.area_label.grid(row=5,column=0,sticky='w')
         self.area=tk.StringVar(value='')
-        self.area_entry=ttk.Entry(container,textvariable=self.area)
-        self.area_entry.grid(row=row,column=1,columnspan=2,sticky='ew');row+=1
-        hint=CENTER_HINT
-        self.hint=ttk.Label(container,text=hint,foreground='#786129',wraplength=750)
-        self.hint.grid(row=row,column=0,columnspan=3,sticky='w');row+=1
-        self.blender_var=tk.StringVar()
-        self.nusamai_var=tk.StringVar()
-        self.output_var=tk.StringVar()
-        home=Path.home()/'Documents'/'PLATEAU'
-        self.output_var.set(str(home/'scene.blend'))
-        for label,var,filetype in [('Blender本体（自動検出）',self.blender_var,'blender'),
-                                   ('nusamai CLI（自動検出）',self.nusamai_var,'nusamai'),
-                                   ('保存する .blend',self.output_var,'save')]:
-            ttk.Label(container,text=label).grid(row=row,column=0,sticky='w',pady=5)
-            ttk.Entry(container,textvariable=var).grid(row=row,column=1,sticky='ew',pady=5)
-            ttk.Button(container,text='参照...',command=lambda v=var,t=filetype:self.choose(v,t)).grid(row=row,column=2,padx=(7,0));row+=1
-        self.scan_button=ttk.Button(container,text='Blender / CLIを再スキャン',command=self.scan_dependencies)
-        self.scan_button.grid(row=row,column=1,sticky='w',pady=(0,7));row+=1
-        self.epsg=tk.StringVar(value='AUTO')
-        self.lod=tk.StringVar(value='textured_max_lod')
-        self.zoom=tk.StringVar(value='18')
-        self.dem_res=tk.StringVar(value='100')
-        self.axis=tk.StringVar(value='auto')
-        for label,var,values in [('平面直角座標系 EPSG（AUTOは地域にも対応）',self.epsg,None),
-                                 ('建物LOD',self.lod,('min_lod','max_lod','textured_max_lod')),
-                                 ('航空写真ズーム',self.zoom,('14','15','16','17','18')),
-                                 ('地形のサンプル密度',self.dem_res,('40','60','100','160','256')),
-                                 ('OBJ座標軸（自動優先）',self.axis,('auto','xyz','yxz'))]:
-            ttk.Label(container,text=label).grid(row=row,column=0,sticky='w',pady=4)
-            if values: control=ttk.Combobox(container,textvariable=var,values=values,state='readonly')
-            else: control=ttk.Entry(container,textvariable=var)
-            control.grid(row=row,column=1,columnspan=2,sticky='ew',pady=3);row+=1
-        self.clip=tk.BooleanVar(value=True)
-        ttk.Checkbutton(container,text='矩形指定時は建物を選択範囲で切り出す（境界に切断面を生成しない）',variable=self.clip).grid(row=row,column=0,columnspan=3,sticky='w',pady=4);row+=1
+        self.area_entry=ttk.Entry(place,textvariable=self.area);self.area_entry.grid(row=6,column=0,sticky='ew')
+        self.check_button=ttk.Button(place,text='この場所を確認',command=self.check_place);self.check_button.grid(row=6,column=1,padx=5)
+        self.hint=ttk.Label(place,text=CENTER_HINT,wraplength=700);self.hint.grid(row=7,column=0,columnspan=2,sticky='w')
+        self.place_info=tk.StringVar(value='')
+        ttk.Label(place,textvariable=self.place_info,wraplength=700).grid(row=8,column=0,columnspan=2,sticky='w')
+        self.area.trace_add('write',self.area_changed)
+        size=ttk.LabelFrame(container,text='② 広さを選ぶ（中心点の場合）',padding=8);size.grid(row=3,column=0,sticky='ew',pady=5)
+        self.size=tk.StringVar(value='400')
+        for label,value in [('小さめ 200m','200'),('標準 400m','400'),('広め 800m','800'),('入力欄の指定を使う','input')]:
+            ttk.Radiobutton(size,text=label,variable=self.size,value=value).pack(side='left',padx=4)
+        save=ttk.LabelFrame(container,text='③ 保存先',padding=8);save.grid(row=4,column=0,sticky='ew');save.columnconfigure(0,weight=1)
+        self.blender_var=tk.StringVar();self.nusamai_var=tk.StringVar()
+        self.output_var=tk.StringVar(value=str(Path.home()/'Documents'/'PLATEAU'/'scene.blend'))
+        ttk.Entry(save,textvariable=self.output_var).grid(row=0,column=0,sticky='ew')
+        ttk.Button(save,text='保存先を変更',command=lambda:self.choose(self.output_var,'save')).grid(row=0,column=1,padx=5)
+        actions=ttk.Frame(container);actions.grid(row=5,column=0,sticky='ew',pady=8)
+        self.generate_button=ttk.Button(actions,text='3Dの街を作る',command=self.start_generate);self.generate_button.pack(side='left',expand=True,fill='x')
+        self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.pack(side='left',padx=4)
+        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled');self.open_button.pack(side='left')
         self.status=tk.StringVar(value='環境スキャン中…')
-        self.status_label=ttk.Label(container,textvariable=self.status,wraplength=750)
-        self.status_label.grid(row=row,column=0,columnspan=3,sticky='w',pady=(6,1));row+=1
-        actions=ttk.Frame(container)
-        actions.grid(row=row,column=0,columnspan=3,sticky='ew',pady=6)
-        self.preview_button=ttk.Button(actions,text='取得対象の確認',command=self.preview_sources)
-        self.preview_button.pack(side='left',padx=3)
-        self.generate_button=ttk.Button(actions,text='▶ 自動取得して .blend を生成',command=self.start_generate)
-        self.generate_button.pack(side='left',padx=3)
-        self.cancel_button=ttk.Button(actions,text='■ 中止',command=self.cancel_running,state='disabled')
-        self.cancel_button.pack(side='left',padx=3)
-        self.open_button=ttk.Button(actions,text='完成ファイルをBlenderで開く',command=self.open_result,state='disabled')
-        self.open_button.pack(side='left',padx=3)
-        ttk.Button(actions,text='Blender自己診断',command=self.smoke_test).pack(side='right',padx=3)
-        ttk.Button(actions,text='環境診断',command=self.diagnose).pack(side='right',padx=3)
-        ttk.Button(actions,text='手動OBJモード',command=self.open_legacy).pack(side='right',padx=3)
-        row+=1
-        self.progress=ttk.Progressbar(container,mode='indeterminate')
-        self.progress.grid(row=row,column=0,columnspan=3,sticky='ew');row+=1
-        ttk.Label(container,text='処理ログ / 取得対象').grid(row=row,column=0,columnspan=3,sticky='w',pady=(8,2));row+=1
-        frame=ttk.Frame(container)
-        frame.grid(row=row,column=0,columnspan=3,sticky='nsew')
-        container.rowconfigure(row,weight=1);frame.rowconfigure(0,weight=1);frame.columnconfigure(0,weight=1)
-        self.log=tk.Text(frame,height=13,wrap='word')
-        self.log.grid(row=0,column=0,sticky='nsew')
-        scrollbar=ttk.Scrollbar(frame,command=self.log.yview)
-        scrollbar.grid(row=0,column=1,sticky='ns');self.log.configure(yscrollcommand=scrollbar.set)
-        row+=1
-        ttk.Label(container,text='出典: 国土地理院（全国最新写真・標高タイル）、国土交通省 Project PLATEAU。配布・公開前に利用条件を確認。',foreground='#756125',wraplength=800).grid(row=row,column=0,columnspan=3,sticky='w',pady=4)
+        self.status_label=ttk.Label(container,textvariable=self.status,wraplength=700);self.status_label.grid(row=6,column=0,sticky='w')
+        self.progress=ttk.Progressbar(container,mode='determinate',value=0);self.progress.grid(row=7,column=0,sticky='ew')
+        self.advanced=ttk.Frame(container,padding=8)
+        self.advanced.columnconfigure(1,weight=1)
+        self.advanced_visible=False
+        self.advanced_button=ttk.Button(container,text='詳細設定・診断を開く ▾',command=self.toggle_advanced)
+        self.advanced_button.grid(row=8,column=0,sticky='w',pady=4)
+        row=0
+        for label,var,kind in [('Blender本体',self.blender_var,'blender'),('nusamai CLI',self.nusamai_var,'nusamai')]:
+            ttk.Label(self.advanced,text=label).grid(row=row,column=0,sticky='w')
+            ttk.Entry(self.advanced,textvariable=var).grid(row=row,column=1,sticky='ew')
+            ttk.Button(self.advanced,text='参照',command=lambda v=var,k=kind:self.choose(v,k)).grid(row=row,column=2);row+=1
+        self.scan_button=ttk.Button(self.advanced,text='Blender / CLIを再スキャン',command=self.scan_dependencies);self.scan_button.grid(row=row,column=1,sticky='w');row+=1
+        self.epsg=tk.StringVar(value='AUTO');self.lod=tk.StringVar(value='textured_max_lod');self.zoom=tk.StringVar(value='18');self.dem_res=tk.StringVar(value='100');self.axis=tk.StringVar(value='auto')
+        for label,var,values in [('EPSG',self.epsg,None),('建物LOD',self.lod,('min_lod','max_lod','textured_max_lod')),('航空写真ズーム',self.zoom,('14','15','16','17','18')),('地形のサンプル密度',self.dem_res,('40','60','100','160','256')),('OBJ座標軸',self.axis,('auto','xyz','yxz'))]:
+            ttk.Label(self.advanced,text=label).grid(row=row,column=0,sticky='w')
+            control=ttk.Combobox(self.advanced,textvariable=var,values=values,state='readonly') if values else ttk.Entry(self.advanced,textvariable=var)
+            control.grid(row=row,column=1,columnspan=2,sticky='ew');row+=1
+        self.clip=tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.advanced,text='矩形範囲で建物を切り出す',variable=self.clip).grid(row=row,column=0,columnspan=3,sticky='w');row+=1
+        diagnostic=ttk.Frame(self.advanced);diagnostic.grid(row=row,column=0,columnspan=3,sticky='w');row+=1
+        self.preview_button=ttk.Button(diagnostic,text='取得対象の確認',command=self.preview_sources);self.preview_button.pack(side='left')
+        for label,command in [('環境診断',self.diagnose),('Blender自己診断',self.smoke_test),('手動OBJモード',self.open_legacy)]:
+            ttk.Button(diagnostic,text=label,command=command).pack(side='left',padx=3)
+        self.log=tk.Text(self.advanced,height=6,wrap='word');self.log.grid(row=row,column=0,columnspan=3,sticky='ew');row+=1
+        ttk.Label(container,text='データ出典: Project PLATEAU / 国土地理院。公開時は利用条件をご確認ください。',wraplength=700).grid(row=10,column=0,sticky='w')
+
+    def area_changed(self,*_):
+        self.place_info.set('')
+        if not self.applying_preset:self.preset.set('')
+
+    def apply_preset(self,event=None):
+        index=self.preset.current()
+        if index<0:return
+        _,coordinates,size=PLACE_PRESETS[index]
+        self.applying_preset=True
+        try:
+            self.mode.set('center')
+            self.update_area()
+            self.area.set(coordinates)
+            self.size.set(size)
+            self.place_info.set('')
+        finally:
+            self.applying_preset=False
+
+    def toggle_advanced(self):
+        self.advanced_visible=not self.advanced_visible
+        if self.advanced_visible:
+            self.advanced.grid(row=9,column=0,sticky='ew')
+            self.advanced_button.configure(text='詳細設定・診断を閉じる ▴')
+        else:
+            self.advanced.grid_remove()
+            self.advanced_button.configure(text='詳細設定・診断を開く ▾')
 
     def update_area(self):
         mode=self.mode.get()
@@ -138,7 +199,10 @@ class AutoGui(tk.Tk):
         mode=self.mode.get()
         if mode=='bbox':condition='r:'+raw.replace(' ','')
         elif mode=='mesh':condition='m:'+raw.replace(' ','')
-        else:condition=center_condition(raw)
+        else:
+            notes=[]
+            condition=center_condition(raw, default_size_m=float(self.size.get()) if self.size.get()!='input' else 400.0, notes=notes)
+            if notes:self.place_info.set('↔ '+notes[0])
         return AutoRequest(condition=condition,epsg=self.epsg.get().strip(),
             output_blend=Path(self.output_var.get()).expanduser().resolve(),
             blender_executable=Path(self.blender_var.get()) if self.blender_var.get() else None,
@@ -147,18 +211,20 @@ class AutoGui(tk.Tk):
             axis_override=self.axis.get(),clip_requested_area=self.clip.get())
 
     def queue_msg(self,s):self.queue.put(('log',str(s)))
-    def _run_worker(self,method):
+    def _run_worker(self,method,generate_job=False):
         if self.running:return
         try:request=self.build_request();request.check()
         except Exception as exc:messagebox.showerror('入力エラー',str(exc));return
         self.running=True
+        self.generate_stage=1 if generate_job else 0
+        if self.generate_stage:self.status.set(f'(1/4) {STAGES[0][1]}…')
         self.cancel_token=CancelToken()
         self.preview_button.configure(state='disabled');self.generate_button.configure(state='disabled')
         self.cancel_button.configure(state='normal')
-        self.progress.start(14)
+        self.progress.configure(mode='indeterminate');self.progress.start(14)
         def worker():
             try:method(request)
-            except Exception as exc:self.queue.put(('error',f'{type(exc).__name__}: {exc}'))
+            except Exception as exc:self.queue.put(('error',user_error(exc)))
             else:self.queue.put(('done','完了'))
         threading.Thread(target=worker,daemon=True).start()
 
@@ -177,15 +243,40 @@ class AutoGui(tk.Tk):
             self.queue_msg('※ APIの取得単位はGMLファイル。生成時には矩形を投影XYの近似矩形へ切り出します。')
         self._run_worker(job)
 
+    def check_place(self):
+        """Catalog-only lookup (no GML download) so users learn early whether the place has data."""
+        if self.running:return
+        try:request=self.build_request()
+        except Exception as exc:self.place_info.set('✗ '+str(exc));return
+        self.check_button.configure(state='disabled')
+        swap=self.place_info.get()
+        self.place_info.set((swap+'\n' if swap else '')+'PLATEAUのデータを探しています…')
+        def worker():
+            try:
+                sources=preview(request)
+                cities='、'.join(dict.fromkeys(f'{s.city}（{s.year}年度）' for s in sources))
+                size=sum(s.size or 0 for s in sources)/1048576
+                text=f'✓ {cities}のデータがあります・GML {len(sources)}件・約{size:.0f}MB'
+            except Exception as exc:
+                text='✗ '+(str(exc) if isinstance(exc,ValueError) else user_error(exc))
+            self.queue.put(('place',(swap+'\n' if swap else '')+text))
+        threading.Thread(target=worker,daemon=True).start()
+
     def start_generate(self):
         try:request=self.build_request()
         except Exception as exc:messagebox.showerror('入力エラー',str(exc));return
-        if request.output_blend.is_file():
-            messagebox.showerror('上書き禁止','既存 .blend は上書きしない。出力名を変更してね。');return
+        renamed=''
+        if request.output_blend.exists():
+            fresh=free_output_path(request.output_blend)
+            self.output_var.set(str(fresh));request=dataclasses.replace(request,output_blend=fresh)
+            renamed='\n（同じ名前のファイルがあるので、上書きせず新しい名前で保存します）'
+        if not messagebox.askyesno('作成内容の確認',f'場所: {self.area.get()}\n広さ: {self.size.get()}（入力欄に広さ・矩形がある場合はそちらを優先）\n保存先: {request.output_blend}{renamed}\n\n建物・地形・航空写真を取得して作成します。よろしいですか？'):
+            return
+        self.last_result=None;self.open_button.configure(state='disabled',text='Blenderで街を開く')
         def job(req):
             result=generate(req,log=self.queue_msg,cancel=self.cancel_token)
             self.queue.put(('result',str(result)))
-        self._run_worker(job)
+        self._run_worker(job,generate_job=True)
 
     def cancel_running(self):
         if self.running and self.cancel_token:
@@ -214,11 +305,11 @@ class AutoGui(tk.Tk):
         self.running=True
         self.cancel_token=CancelToken()
         self.preview_button.configure(state='disabled');self.generate_button.configure(state='disabled')
-        self.cancel_button.configure(state='normal');self.progress.start(14)
+        self.cancel_button.configure(state='normal');self.progress.configure(mode='indeterminate');self.progress.start(14)
         def worker():
             try:
                 output=run_smoke(blender=binary,output_parent=Path(self.output_var.get()).expanduser().resolve().parent/'diagnostics',log=self.queue_msg,cancel=self.cancel_token)
-                self.queue.put(('result',str(output)))
+                self.queue.put(('smoke_result',str(output)))
             except Exception as exc:self.queue.put(('error',f'{type(exc).__name__}: {exc}'))
             else:self.queue.put(('done','Blender自己診断成功。検証用 .blend を開いて確認できるよ。'))
         threading.Thread(target=worker,daemon=True).start()
@@ -253,19 +344,29 @@ class AutoGui(tk.Tk):
                     blender,nusamai=data
                     if blender and not self.blender_var.get():self.blender_var.set(str(blender[0]))
                     if nusamai and not self.nusamai_var.get():self.nusamai_var.set(str(nusamai))
-                    self.status.set(f'Blender {len(blender)}件検出: {blender[0] if blender else "未検出"} | nusamai: {nusamai or "未検出（手動指定可）"}')
+                    if not self.generate_stage:self.status.set('準備OK' if blender and nusamai else '必要なソフトが見つかりません。詳細設定で確認してください。')
+                elif kind=='place':
+                    self.place_info.set(data);self.check_button.configure(state='normal')
                 elif kind=='log':
                     self.log.insert('end',data+'\n');self.log.see('end')
-                elif kind=='result':
+                    if self.generate_stage:
+                        self.generate_stage=stage_for(data,self.generate_stage)
+                        self.status.set(f'({self.generate_stage}/4) {STAGES[self.generate_stage-1][1]}…')
+                elif kind in ('result','smoke_result'):
                     self.last_result=Path(data)
-                    self.open_button.configure(state='normal')
+                    self.open_button.configure(state='normal',text='Blenderで街を開く' if kind=='result' else '診断ファイルを開く')
                 else:
-                    self.running=False;self.progress.stop()
+                    self.running=False;self.generate_stage=0;self.progress.stop()
+                    self.progress.configure(mode='determinate',value=0)
                     self.preview_button.configure(state='normal');self.generate_button.configure(state='normal')
                     self.cancel_button.configure(state='disabled')
                     self.log.insert('end',f'[{kind.upper()}] {data}\n');self.log.see('end')
-                    if kind=='error':messagebox.showerror('処理失敗',data)
-                    else:messagebox.showinfo('処理完了',data)
+                    if kind=='error':
+                        self.status.set(data if data.startswith('この場所には') else '処理に失敗しました。詳細設定のログを確認してください。')
+                        messagebox.showerror('処理失敗',data)
+                    else:
+                        self.status.set(data)
+                        messagebox.showinfo('処理完了',data)
         except queue.Empty:pass
         self.after(120,self.poll)
 

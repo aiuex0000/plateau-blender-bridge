@@ -6,11 +6,12 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 from pyproj import Transformer
 from plateau_blend.runtime import CancelToken, CancelledError, run_logged
-from plateau_blend.catalog import fetch_catalog, select_sources
+from plateau_blend.catalog import NoPlateauData, fetch_catalog, select_sources
 from plateau_blend.resources import forecast, enforce_budget
 from plateau_blend.diagnostics import inspect_environment
 from plateau_blend.auto import AutoRequest, generate
@@ -61,6 +62,19 @@ class V05Tests(unittest.TestCase):
             fetch_catalog('m:533935',opener=lambda *a,**kw:Response(b'{"error":"rate limit"}'))
         with self.assertRaises(ValueError):
             fetch_catalog('m:533935',opener=lambda *a,**kw:Response(b'"unexpected"'))
+
+    def test_api_404_means_no_data_not_failure(self):
+        # The live API answers {"error":"not found"} with HTTP 404 outside PLATEAU coverage (2026-10-27).
+        def not_found(req,**kw):
+            raise urllib.error.HTTPError(req.full_url,404,'Not Found',{},io.BytesIO(b'{"error":"not found"}'))
+        with self.assertRaisesRegex(NoPlateauData,'PLATEAUの3D都市データがまだありません'):
+            fetch_catalog('r:135.407,34.889,135.409,34.891',opener=not_found)
+        def server_error(req,**kw):
+            raise urllib.error.HTTPError(req.full_url,500,'Server Error',{},io.BytesIO(b''))
+        with self.assertRaises(urllib.error.HTTPError):
+            fetch_catalog('m:533935',opener=server_error)
+        with self.assertRaises(NoPlateauData):
+            select_sources([{'cityCode':'1','files':{'bldg':[]}}])
 
     def test_resource_forecast_deterministic(self):
         x,y=Transformer.from_crs(4326,6674,always_xy=True).transform(135.43,34.82)

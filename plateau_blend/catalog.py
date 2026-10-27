@@ -5,6 +5,7 @@ from pathlib import Path
 import hashlib
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from xml.parsers import expat
@@ -30,6 +31,12 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
 _safe_open=urllib.request.build_opener(_SafeRedirect()).open
 
 
+class NoPlateauData(ValueError):
+    """The API answered normally that the area has no PLATEAU data (HTTP 404 'not found')."""
+    def __init__(self):
+        super().__init__('この場所にはPLATEAUの3D都市データがまだありません。対応している都市で試してください（例: 新宿駅西口 35.6905, 139.6995）。上の「有名な場所から選ぶ」も使えます')
+
+
 def _sha256_file(path: Path) -> str:
     h=hashlib.sha256()
     with path.open('rb') as f:
@@ -51,8 +58,12 @@ def citygml_query(condition: str, types: tuple[str, ...] = ('bldg',)) -> str:
 def fetch_catalog(condition: str, *, opener=None) -> list[dict]:
     opener = opener or _safe_open
     req = urllib.request.Request(citygml_query(condition),headers={'User-Agent':USER_AGENT, 'Accept':'application/json'})
-    with opener(req, timeout=30) as response:
-        payload = response.read(15_000_001)
+    try:
+        with opener(req, timeout=30) as response:
+            payload = response.read(15_000_001)
+    except urllib.error.HTTPError as exc:
+        if exc.code==404: raise NoPlateauData() from exc
+        raise
     if len(payload)>15_000_000: raise ValueError('PLATEAU APIレスポンスが大きすぎます')
     data = json.loads(payload)
     if isinstance(data,dict):
@@ -115,7 +126,9 @@ def select_sources(records: list[dict], kind: str = 'bldg', *, max_files: int = 
         seen.add(source.url)
         if twin: seen.add(twin)
         sources.append(source)
-    if not sources: raise ValueError(f'指定範囲に {kind} データが見つかりません')
+    if not sources:
+        if kind=='bldg': raise NoPlateauData()
+        raise ValueError(f'指定範囲に {kind} データが見つかりません')
     known = sum(s.size or 0 for s in sources)
     if len(sources)>max_files or known>max_known_mb*1024*1024:
         raise ValueError(f'広すぎる範囲: {len(sources)} GML / 判明分 {known/1048576:.1f} MiB。範囲を狭めてください（上限 {max_files}件・{max_known_mb}MiB）')
