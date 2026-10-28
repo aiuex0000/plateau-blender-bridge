@@ -13,12 +13,13 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from .auto import AutoRequest, preview, generate
 from .discovery import blender_candidates, find_nusamai
-from .runtime import CancelToken, CancelledError
+from .runtime import CancelToken, CancelledError, enable_dpi_awareness
 from .diagnostics import inspect_environment
 from .resources import forecast, enforce_budget
 from .auto import projected_selection, center_condition
 from .smoke import run_smoke
 from .catalog import NoPlateauData
+from . import __version__
 
 CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
 CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は下の選択を使用。矩形の4つの数字もOK）'
@@ -61,31 +62,53 @@ def user_error(exc:Exception)->str:
     return f'{type(exc).__name__}: {exc}'
 
 
+def completion_message(path:Path)->str:
+    """One plain sentence for the beginner screen: what was made and where it went."""
+    return f'作成できました。保存先: {path}'
+
+
 class AutoGui(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('PLATEAU → Blender | 自動生成 v0.10')
+        self.title(f'PLATEAU → Blender | 自動生成 v{__version__.rsplit(".",1)[0]}')
         self.geometry('900x780')
         self.minsize(730,580)
+        self._apply_scaling()
         self.queue=queue.Queue()
         self.vars={}
         self.running=False
         self.generate_stage=0
+        self.result_kind:str|None=None
         self.cancel_token=None
         self.last_result:Path|None=None
         self.create_widgets()
         self.after(100,self.poll)
         self.after(250,self.scan_dependencies)
 
+    def _apply_scaling(self):
+        """Match Tk point sizes to the display DPI so 125%/150% Windows scaling stays readable."""
+        try:self.tk.call('tk','scaling',self.winfo_fpixels('1i')/72.0)
+        except tk.TclError:pass
+
+    def _on_mousewheel(self,event):
+        """Scroll the form with the wheel; leave the log box and open dropdowns to themselves."""
+        widget=self.winfo_containing(event.x_root,event.y_root)
+        while widget is not None:
+            if widget is self.log:return
+            widget=getattr(widget,'master',None)
+        self.canvas.yview_scroll(int(-event.delta/120),'units')
+
     def create_widgets(self):
         canvas=tk.Canvas(self,highlightthickness=0)
         scrollbar=ttk.Scrollbar(self,orient='vertical',command=canvas.yview)
         scrollbar.pack(side='right',fill='y');canvas.pack(side='left',expand=True,fill='both')
         canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas=canvas
         container=ttk.Frame(canvas,padding=12)
         window=canvas.create_window((0,0),window=container,anchor='nw')
         container.bind('<Configure>',lambda event:canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>',lambda event:canvas.itemconfigure(window,width=event.width))
+        self.bind('<MouseWheel>',self._on_mousewheel)
         container.columnconfigure(0,weight=1)
         ttk.Label(container,text='好きな街を3Dにしよう',font=('Yu Gothic UI',16,'bold')).grid(row=0,column=0,sticky='w')
         ttk.Label(container,text='場所と広さを選んで、Blenderで開ける街を作ります。').grid(row=1,column=0,sticky='w',pady=(0,8))
@@ -117,12 +140,15 @@ class AutoGui(tk.Tk):
         save=ttk.LabelFrame(container,text='③ 保存先',padding=8);save.grid(row=4,column=0,sticky='ew');save.columnconfigure(0,weight=1)
         self.blender_var=tk.StringVar();self.nusamai_var=tk.StringVar()
         self.output_var=tk.StringVar(value=str(Path.home()/'Documents'/'PLATEAU'/'scene.blend'))
-        ttk.Entry(save,textvariable=self.output_var).grid(row=0,column=0,sticky='ew')
+        self.output_name=tk.StringVar(value=Path(self.output_var.get()).name)
+        self.output_var.trace_add('write',lambda *_:self.output_name.set(Path(self.output_var.get()).name))
+        ttk.Label(save,textvariable=self.output_name,font=('Yu Gothic UI',11)).grid(row=0,column=0,sticky='w')
         ttk.Button(save,text='保存先を変更',command=lambda:self.choose(self.output_var,'save')).grid(row=0,column=1,padx=5)
+        ttk.Label(save,text='同じ名前のファイルがある時は、上書きせず別の名前にして保存します。',wraplength=700).grid(row=1,column=0,columnspan=2,sticky='w')
         actions=ttk.Frame(container);actions.grid(row=5,column=0,sticky='ew',pady=8)
         self.generate_button=ttk.Button(actions,text='3Dの街を作る',command=self.start_generate);self.generate_button.pack(side='left',expand=True,fill='x')
         self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.pack(side='left',padx=4)
-        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled');self.open_button.pack(side='left')
+        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled')
         self.status=tk.StringVar(value='環境スキャン中…')
         self.status_label=ttk.Label(container,textvariable=self.status,wraplength=700);self.status_label.grid(row=6,column=0,sticky='w')
         self.progress=ttk.Progressbar(container,mode='determinate',value=0);self.progress.grid(row=7,column=0,sticky='ew')
@@ -132,6 +158,9 @@ class AutoGui(tk.Tk):
         self.advanced_button=ttk.Button(container,text='詳細設定・診断を開く ▾',command=self.toggle_advanced)
         self.advanced_button.grid(row=8,column=0,sticky='w',pady=4)
         row=0
+        ttk.Label(self.advanced,text='保存先（フルパス）').grid(row=row,column=0,sticky='w')
+        self.output_entry=ttk.Entry(self.advanced,textvariable=self.output_var);self.output_entry.grid(row=row,column=1,sticky='ew')
+        ttk.Button(self.advanced,text='参照',command=lambda:self.choose(self.output_var,'save')).grid(row=row,column=2);row+=1
         for label,var,kind in [('Blender本体',self.blender_var,'blender'),('nusamai CLI',self.nusamai_var,'nusamai')]:
             ttk.Label(self.advanced,text=label).grid(row=row,column=0,sticky='w')
             ttk.Entry(self.advanced,textvariable=var).grid(row=row,column=1,sticky='ew')
@@ -148,8 +177,11 @@ class AutoGui(tk.Tk):
         self.preview_button=ttk.Button(diagnostic,text='取得対象の確認',command=self.preview_sources);self.preview_button.pack(side='left')
         for label,command in [('環境診断',self.diagnose),('Blender自己診断',self.smoke_test),('手動OBJモード',self.open_legacy)]:
             ttk.Button(diagnostic,text=label,command=command).pack(side='left',padx=3)
+        logactions=ttk.Frame(self.advanced);logactions.grid(row=row,column=0,columnspan=3,sticky='w',pady=(4,0));row+=1
+        ttk.Button(logactions,text='ログを保存',command=self.save_log).pack(side='left')
+        ttk.Button(logactions,text='ログをコピー',command=self.copy_log).pack(side='left',padx=3)
         self.log=tk.Text(self.advanced,height=6,wrap='word');self.log.grid(row=row,column=0,columnspan=3,sticky='ew');row+=1
-        ttk.Label(container,text='データ出典: Project PLATEAU / 国土地理院。公開時は利用条件をご確認ください。',wraplength=700).grid(row=10,column=0,sticky='w')
+        ttk.Label(container,text=f'PLATEAU → Blender Bridge v{__version__}　データ出典: Project PLATEAU / 国土地理院。公開時は利用条件をご確認ください。',wraplength=760).grid(row=10,column=0,sticky='w')
 
     def area_changed(self,*_):
         self.place_info.set('')
@@ -272,7 +304,7 @@ class AutoGui(tk.Tk):
             renamed='\n（同じ名前のファイルがあるので、上書きせず新しい名前で保存します）'
         if not messagebox.askyesno('作成内容の確認',f'場所: {self.area.get()}\n広さ: {self.size.get()}（入力欄に広さ・矩形がある場合はそちらを優先）\n保存先: {request.output_blend}{renamed}\n\n建物・地形・航空写真を取得して作成します。よろしいですか？'):
             return
-        self.last_result=None;self.open_button.configure(state='disabled',text='Blenderで街を開く')
+        self.last_result=None;self.result_kind=None;self.open_button.configure(state='disabled',text='Blenderで街を開く');self.open_button.pack_forget()
         def job(req):
             result=generate(req,log=self.queue_msg,cancel=self.cancel_token)
             self.queue.put(('result',str(result)))
@@ -336,6 +368,21 @@ class AutoGui(tk.Tk):
         else:
             subprocess.Popen([sys.executable,'-m','plateau_blend.gui'])
 
+    def log_text(self)->str:
+        return self.log.get('1.0','end-1c')
+
+    def save_log(self):
+        filename=filedialog.asksaveasfilename(defaultextension='.txt',
+            filetypes=[('テキスト','*.txt'),('すべてのファイル','*.*')],initialfile='plateau_bridge_log.txt')
+        if not filename:return
+        try:Path(filename).write_text(self.log_text(),encoding='utf-8')
+        except OSError as exc:messagebox.showerror('保存できませんでした',str(exc));return
+        self.status.set(f'ログを保存しました: {filename}')
+
+    def copy_log(self):
+        self.clipboard_clear();self.clipboard_append(self.log_text())
+        self.status.set('ログをコピーしました。貼り付け先で Ctrl+V できます。')
+
     def poll(self):
         try:
             while True:
@@ -353,8 +400,9 @@ class AutoGui(tk.Tk):
                         self.generate_stage=stage_for(data,self.generate_stage)
                         self.status.set(f'({self.generate_stage}/4) {STAGES[self.generate_stage-1][1]}…')
                 elif kind in ('result','smoke_result'):
-                    self.last_result=Path(data)
+                    self.last_result=Path(data);self.result_kind=kind
                     self.open_button.configure(state='normal',text='Blenderで街を開く' if kind=='result' else '診断ファイルを開く')
+                    if not self.open_button.winfo_manager():self.open_button.pack(side='left')
                 else:
                     self.running=False;self.generate_stage=0;self.progress.stop()
                     self.progress.configure(mode='determinate',value=0)
@@ -364,12 +412,19 @@ class AutoGui(tk.Tk):
                     if kind=='error':
                         self.status.set(data if data.startswith('この場所には') else '処理に失敗しました。詳細設定のログを確認してください。')
                         messagebox.showerror('処理失敗',data)
+                    elif self.result_kind=='result' and self.last_result:
+                        message=completion_message(self.last_result)
+                        self.status.set(message)
+                        messagebox.showinfo('作成できました',f'{message}\n\n「Blenderで街を開く」から開けます。')
                     else:
                         self.status.set(data)
                         messagebox.showinfo('処理完了',data)
+                    self.result_kind=None
         except queue.Empty:pass
         self.after(120,self.poll)
 
 
-def main():AutoGui().mainloop()
+def main():
+    enable_dpi_awareness()
+    AutoGui().mainloop()
 if __name__=='__main__':main()

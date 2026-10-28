@@ -202,6 +202,8 @@ class App(tk.Tk):
 
 
 def main():
+    from .runtime import enable_dpi_awareness
+    enable_dpi_awareness()
     App().mainloop()
 
 

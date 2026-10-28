@@ -9,10 +9,28 @@ import os
 import queue
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Callable
+
+
+def enable_dpi_awareness() -> bool:
+    """Let Tk use the real display DPI on Windows (125%/150% scaling) instead of a blurred bitmap stretch."""
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+    except ImportError:
+        return False
+    try:
+        return ctypes.windll.shcore.SetProcessDpiAwareness(1) == 0
+    except Exception:
+        try:
+            return bool(ctypes.windll.user32.SetProcessDPIAware())
+        except Exception:
+            return False
 
 
 class CancelledError(RuntimeError):
