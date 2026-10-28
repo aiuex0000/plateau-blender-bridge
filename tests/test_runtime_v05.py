@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -124,7 +125,7 @@ class V05Tests(unittest.TestCase):
                 generate(req,cancel=token,catalogue_fetch=fetch)
             self.assertFalse((folder/'out.blend').exists())
 
-if __name__=='__main__':unittest.main()
+
 
 # Outside unittest discovery the following standalone class is also included.
 class RedirectSafetyTests(unittest.TestCase):
@@ -136,3 +137,31 @@ class RedirectSafetyTests(unittest.TestCase):
         handler=_GsiSafeRedirect()
         with self.assertRaises(ValueError):
             handler.redirect_request(None,None,302,'moved',{},'https://evil.test/track')
+
+
+class HiddenConsoleTests(unittest.TestCase):
+    def test_console_children_start_without_a_window(self):
+        from plateau_blend.runtime import hidden_process_kwargs
+        kwargs=hidden_process_kwargs()
+        if os.name=='nt':
+            self.assertTrue(kwargs['creationflags'] & subprocess.CREATE_NO_WINDOW)
+        else:
+            self.assertTrue(kwargs['start_new_session'])
+
+    def test_run_logged_passes_the_hidden_flags(self):
+        captured={}
+        class Fake:
+            def __init__(self,argv,**kwargs):
+                captured.update(kwargs);self.stdout=io.StringIO('line\n');self.returncode=0;self.pid=1
+            def poll(self):return 0
+            def wait(self,timeout=None):return 0
+        with tempfile.TemporaryDirectory() as td:
+            with patch('plateau_blend.runtime.subprocess.Popen',Fake):
+                run_logged([sys.executable,'-c','pass'],Path(td)/'x.log',log=lambda line:None)
+            self.assertEqual((Path(td)/'x.log').read_text(encoding='utf-8'),'line\n')
+        if os.name=='nt':
+            self.assertTrue(captured['creationflags'] & subprocess.CREATE_NO_WINDOW)
+            self.assertIn('creationflags',captured)
+
+
+if __name__=='__main__':unittest.main()

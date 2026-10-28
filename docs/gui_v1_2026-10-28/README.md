@@ -12,10 +12,22 @@
 5. **125%/150% 表示倍率** — `runtime.enable_dpi_awareness()`（`SetProcessDpiAwareness(1)`、失敗時 `SetProcessDPIAware()`）を `auto_gui.main()` と `gui.main()` で有効化。Tk の `tk scaling` を実DPI（`winfo_fpixels('1i')/72`）に合わせた。
 6. **マウスホイールでフォームがスクロール** — Canvas はホイールを拾わず、小画面でスクロールバーを掴む必要があった。ログ欄の上ではログ側に譲る。
 7. **バージョン表記の統一** — `__version__` が 0.9.0、pyproject が 0.10.0、タイトルが v0.10 とずれていた。`__version__ = "0.10.0"` に一本化し、タイトルとフッター（出典併記）がそこを参照する。
+8. **黒い画面を出さない** — 窓なし親（EXE/pythonw）からコンソール子プロセス（nusamai、taskkill、`--version` 確認）を起こすと、Windowsが新しいコンソールウィンドウを割り当てていた。`runtime.hidden_process_kwargs()`（`CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`、POSIXは `start_new_session`）を `run_logged`・`_stop`・`diagnostics._version`・`open_legacy`／`open_result` に適用。進捗はGUI側の状態行とプログレスバー、処理中は待機カーソルで示す。
+
+### 黒い画面の実測
+
+`pythonw.exe`（コンソールを持たない親）から、子プロセス自身に `GetConsoleWindow()` を答えさせた。
+
+| 起動方法 | 子の結果 |
+| --- | --- |
+| 素の `subprocess.Popen` | `CONSOLE_HWND 8267310`（コンソールあり＝黒い窓が出る） |
+| `run_logged`（今回の変更後） | `CONSOLE_HWND 0`（コンソールなし） |
+
+2回ずつ繰り返して同じ結果。`conhost` のプロセス数比較は他プロセスの増減に紛れて判別できなかったため、子プロセス自身の申告を証拠にした。
 
 ## 検証
 
-- 単体テスト：**112件成功**（`b3e87bd` の108件＋新規4件：完了文言、DPIヘルパー、バージョン形式、保存先のファイル名表示、完了時のCTA出現）
+- 単体テスト：**115件成功**（`b3e87bd` の108件＋新規7件：完了文言、DPIヘルパー、バージョン形式、保存先のファイル名表示、完了時のCTA出現、コンソールを開かない起動引数、`run_logged` がそれを渡すこと）
 - 凍結EXE：`dist-next\PLATEAU-Blender-Bridge\`（PyInstaller 6.22.3、onedir、同梱nusamai v0.1.19パッチ済み）
   - `--self-check` → `passed: true`、`proj_data_found: true`、`missing_scripts: []`、`bundled_nusamai` 解決済み、Tcl 8.6.12
 - 実データ（池田市 `r:135.429,34.819,135.431,34.821`、凍結EXEの `--cli`）

@@ -53,6 +53,13 @@ class CancelToken:
         return self._event.is_set()
 
 
+def hidden_process_kwargs() -> dict:
+    """Start console children without a black window; the GUI shows progress instead."""
+    if os.name != 'nt':
+        return {'start_new_session': True}
+    return {'creationflags': subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+
+
 def _stop(proc: subprocess.Popen):
     if proc.poll() is not None:
         return
@@ -60,7 +67,7 @@ def _stop(proc: subprocess.Popen):
         # taskkill /T terminates child processes; scope strictly to Popen's PID.
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=8, check=False)
+                       timeout=8, check=False, **hidden_process_kwargs())
     else:
         try:
             os.killpg(proc.pid, signal.SIGTERM)
@@ -89,7 +96,7 @@ def run_logged(argv: list[str], log_path: Path, log: Callable[[str], None] = pri
     # Back-pressure protects RAM if a child emits logs faster than the GUI can consume them.
     lines: queue.Queue[str | None] = queue.Queue(maxsize=512)
     stop_reader = threading.Event()
-    extra = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
+    extra = hidden_process_kwargs()
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding='utf-8', errors='replace', bufsize=1, **extra)
     assert proc.stdout is not None

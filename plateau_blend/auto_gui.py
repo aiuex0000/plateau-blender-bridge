@@ -13,7 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from .auto import AutoRequest, preview, generate
 from .discovery import blender_candidates, find_nusamai
-from .runtime import CancelToken, CancelledError, enable_dpi_awareness
+from .runtime import CancelToken, CancelledError, enable_dpi_awareness, hidden_process_kwargs
 from .diagnostics import inspect_environment
 from .resources import forecast, enforce_budget
 from .auto import projected_selection, center_condition
@@ -259,6 +259,7 @@ class AutoGui(tk.Tk):
             except Exception as exc:self.queue.put(('error',user_error(exc)))
             else:self.queue.put(('done','完了'))
         threading.Thread(target=worker,daemon=True).start()
+        self.configure(cursor='watch')
 
     def preview_sources(self):
         def job(req):
@@ -345,6 +346,7 @@ class AutoGui(tk.Tk):
             except Exception as exc:self.queue.put(('error',f'{type(exc).__name__}: {exc}'))
             else:self.queue.put(('done','Blender自己診断成功。検証用 .blend を開いて確認できるよ。'))
         threading.Thread(target=worker,daemon=True).start()
+        self.configure(cursor='watch')
 
     def scan_dependencies(self):
         self.status.set('Blender / nusamai 実行ファイルを検索中…')
@@ -359,14 +361,14 @@ class AutoGui(tk.Tk):
     def open_result(self):
         if not self.last_result:return
         blender=Path(self.blender_var.get())
-        try:subprocess.Popen([str(blender),str(self.last_result)])
+        try:subprocess.Popen([str(blender),str(self.last_result)],**hidden_process_kwargs())
         except OSError as exc:messagebox.showerror('起動失敗',str(exc))
 
     def open_legacy(self):
         if getattr(sys,'frozen',False):
-            subprocess.Popen([sys.executable,'--manual'])
+            subprocess.Popen([sys.executable,'--manual'],**hidden_process_kwargs())
         else:
-            subprocess.Popen([sys.executable,'-m','plateau_blend.gui'])
+            subprocess.Popen([sys.executable,'-m','plateau_blend.gui'],**hidden_process_kwargs())
 
     def log_text(self)->str:
         return self.log.get('1.0','end-1c')
@@ -407,7 +409,7 @@ class AutoGui(tk.Tk):
                     self.running=False;self.generate_stage=0;self.progress.stop()
                     self.progress.configure(mode='determinate',value=0)
                     self.preview_button.configure(state='normal');self.generate_button.configure(state='normal')
-                    self.cancel_button.configure(state='disabled')
+                    self.cancel_button.configure(state='disabled');self.configure(cursor='')
                     self.log.insert('end',f'[{kind.upper()}] {data}\n');self.log.see('end')
                     if kind=='error':
                         self.status.set(data if data.startswith('この場所には') else '処理に失敗しました。詳細設定のログを確認してください。')

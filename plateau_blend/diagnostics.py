@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 from .discovery import find_blender, find_nusamai
+from .runtime import hidden_process_kwargs
 
 
 def _version(binary: Path | None) -> dict:
@@ -16,7 +17,8 @@ def _version(binary: Path | None) -> dict:
         return {'found': False, 'path': str(binary) if binary else None}
     try:
         result=subprocess.run([str(binary),'--version'],capture_output=True,
-                              text=True,encoding='utf-8',errors='replace',timeout=15,check=False)
+                              text=True,encoding='utf-8',errors='replace',timeout=15,check=False,
+                              **hidden_process_kwargs())
         return {'found':True,'path':str(binary),'returncode':result.returncode,
                 'banner':(result.stdout or result.stderr).splitlines()[:4]}
     except (OSError, subprocess.TimeoutExpired) as exc:
