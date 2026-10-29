@@ -1,13 +1,11 @@
 @echo off
-cd /d "%~dp0"
-if exist "dist\PLATEAU-Blender-Bridge\PLATEAU-Blender-Bridge.exe" (
-  start "" "dist\PLATEAU-Blender-Bridge\PLATEAU-Blender-Bridge.exe" --manual
-  exit /b 0
-)
-if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" -m plateau_blend.gui
-  exit /b %errorlevel%
-)
-echo Development files only. Obtain the compiled Windows ZIP first.
-pause
-exit /b 1
+setlocal
+set "APP=C:\Users\You\Workspace\Workbench\Projects\PLATEAU-Blender-Bridge\app\PLATEAU-Blender-Bridge.exe"
+if exist "%APP%" goto launch
+ echo PLATEAU-Blender-Bridge.exe was not found at:
+ echo %APP%
+ echo For source development, use start_dev_gui.bat.
+ exit /b 1
+:launch
+start "" "%APP%" --manual
+exit /b 0
