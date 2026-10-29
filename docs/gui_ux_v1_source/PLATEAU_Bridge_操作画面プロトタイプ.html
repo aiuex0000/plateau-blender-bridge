@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PLATEAU Bridge — 初心者向けGUI試作</title>
+  <style>
+    :root{font-family:"Yu Gothic UI","Meiryo",system-ui,sans-serif;color:#1d2939;background:#edf2f7;font-size:15px;line-height:1.65}
+    *{box-sizing:border-box}body{margin:0;padding:22px 14px 45px}
+    button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.52}
+    a{color:#135cba}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #68a5ff;outline-offset:3px}
+    .app{width:min(820px,100%);margin:auto;background:white;border:1px solid #dce5ee;border-radius:16px;box-shadow:0 10px 34px #29456414;overflow:hidden}
+    header{background:#f8fbff;border-bottom:1px solid #e2eaf2;padding:24px 31px 19px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:750;font-size:.88rem;color:#225580;letter-spacing:.025em}
+    .brand-icon{display:inline-grid;place-items:center;color:#fff;background:#1966b3;height:32px;width:32px;border-radius:9px;font-size:17px}
+    h1{font-size:clamp(1.47rem,3.5vw,1.9rem);line-height:1.35;margin:15px 0 7px;letter-spacing:-.035em}
+    h2{font-size:1.08rem;margin:0 0 6px;letter-spacing:-.01em}
+    p{margin:0}small,.sub{font-size:.84rem;color:#546579}.tag{font-size:.72rem;background:#e6f3ff;color:#1b5b96;padding:4px 9px;border-radius:30px;font-weight:700}
+    .topline{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .shell{padding:25px 31px 30px}.step{display:grid;grid-template-columns:38px 1fr;gap:13px;margin:0 0 25px}
+    .number{display:grid;place-items:center;height:34px;width:34px;color:#1b5799;background:#e8f2ff;border-radius:50%;font-weight:800}
+    .body{min-width:0}.field-label{display:block;font-weight:650;margin:11px 0 7px;font-size:.9rem}
+    .field{width:100%;border:1px solid #aab9c9;border-radius:9px;background:#fff;min-height:46px;padding:10px 13px;color:#17283c}
+    .field::placeholder{color:#6b7888}.field.invalid{border-color:#c62936;background:#fff9f9}
+    .hint{font-size:.82rem;color:#607286;margin-top:5px}.error{font-size:.85rem;color:#b22034;min-height:1.2em;margin-top:5px}
+    .action-secondary{border:1px solid #b7cadb;color:#225781;background:#fff;border-radius:9px;min-height:44px;padding:9px 15px;font-weight:670}
+    .action-secondary:hover{background:#eef6ff}.maplink{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:700;color:#194f8b;border:1px solid #a9cce6;background:#f1f8ff;padding:10px 16px;border-radius:9px;margin-top:10px}
+    .maplink:hover{background:#e5f2ff}.guide{background:#f5f9fc;border-radius:10px;margin:12px 0 13px;padding:12px 14px;font-size:.85rem;color:#41566d}
+    .guide strong{color:#234e7e}.guide .arrow{color:#829cb9;padding:0 7px}
+    .methodbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.method{border:1px solid #cbd6e2;padding:6px 11px;background:white;border-radius:8px;font-size:.82rem;min-height:36px}
+    .method[aria-pressed="true"]{background:#e9f3ff;border-color:#2673c5;color:#134f97;font-weight:700}
+    .inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.area-options{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:11px}
+    .area-choice{border:1px solid #cbd5e0;border-radius:11px;position:relative;padding:11px;cursor:pointer;min-width:0}
+    .area-choice:has(input:checked){border:2px solid #1c70c9;background:#f0f7ff;padding:10px}
+    .area-choice input{position:absolute;top:15px;right:13px;accent-color:#1865ae}
+    .area-choice b{display:block;font-size:.94rem}.area-choice span{display:block;color:#52657d;font-size:.79rem;padding-right:11px}
+    .save-row{display:flex;gap:10px;align-items:center}.save-row input{flex:1;min-width:0}
+    .summary{border-top:1px solid #e3ebf2;padding-top:20px;margin-top:8px}
+    .summary-panel{display:flex;gap:13px;align-items:flex-start;background:#f1f7ff;border:1px solid #d8e7f8;border-radius:11px;padding:13px 16px;margin:9px 0 16px}
+    .summary-icon{font-size:1.4rem}.summary strong{display:block}.summary .sub{display:block}
+    .primary{background:#1469bd;color:white;border:1px solid #1469bd;font-weight:780;border-radius:11px;padding:13px 18px;min-height:55px;font-size:1.08rem;width:100%}
+    .primary:hover{background:#0e5297}.status{display:flex;align-items:center;gap:9px;margin-top:14px;color:#485d71;font-size:.87rem}
+    .dot{background:#64a974;border-radius:50%;height:8px;width:8px;flex:none}.dot.warn{background:#c28b3a}
+    details{border:1px solid #e0e9f0;border-radius:10px;padding:10px 14px;margin-top:18px;background:#fff}
+    summary{cursor:pointer;font-weight:680;color:#285678}details[open]{background:#fafcff}details .inner{padding:13px 1px 2px}
+    .advanced{margin:22px 0;padding:17px 18px;background:#f9fbfe;border:1px solid #dbe8f4;border-radius:12px}
+    .advanced h2{margin-bottom:4px}.advanced-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;row-gap:4px}
+    .advanced input,.advanced select{min-height:42px}.advanced .path-row{grid-column:1/-1}
+    footer{border-top:1px solid #e2eaf2;background:#fbfcfe;color:#637387;padding:13px 31px;font-size:.77rem;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .notice{color:#845719;background:#fff3db;padding:8px 10px;border-radius:8px;font-size:.78rem;margin-top:12px}
+    dialog{border:1px solid #d3e1f0;border-radius:14px;padding:0;width:min(510px,calc(100% - 28px));box-shadow:0 20px 70px #0c234b45;color:#1a293a}
+    dialog::backdrop{background:#1f344870}.modal-inner{padding:24px}.modal-inner h2{margin-bottom:8px;font-size:1.3rem}
+    .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:19px}.modal-actions button{min-height:42px}
+    [hidden]{display:none!important}.status-msg{font-size:.83rem;color:#364f65;white-space:pre-line}
+    @media(max-width:580px){body{padding:7px 7px 18px}.app{border-radius:12px}.shell,header{padding:18px 15px}.step{grid-template-columns:30px 1fr;gap:9px}.number{height:28px;width:28px}.area-options{grid-template-columns:1fr}.area-choice{min-height:56px}.inline-grid,.advanced-grid{grid-template-columns:1fr}.save-row{flex-wrap:wrap}footer{padding:12px 17px}}
+    @media(prefers-reduced-motion:no-preference){.primary,.action-secondary,.maplink{transition:background-color .18s}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="topline"><div class="brand"><span class="brand-icon" aria-hidden="true">▧</span> PLATEAU → Blender Bridge</div><span class="tag">画面試作・生成機能は未接続</span></div>
+    <h1>好きな街を3Dにしよう</h1>
+    <p class="sub">地図で場所を選んで、ボタンを押すだけ。実在する街をBlenderで見られる形にします。</p>
+  </header>
+  <div class="shell">
+    <section class="step" aria-labelledby="place-heading"><div class="number" aria-hidden="true">1</div><div class="body">
+      <h2 id="place-heading">場所を選ぶ</h2>
+      <p class="sub">好きな街・駅・建物の周辺を選べます。</p>
+      <a class="maplink" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer">🗺️ Googleマップで場所を探す ↗</a>
+      <div class="guide">Googleマップで <strong>① 場所を右クリック</strong><span class="arrow">→</span><strong>② 座標の数字をクリック</strong><span class="arrow">→</span><strong>③ 下の欄に貼り付け</strong></div>
+      <div class="field-label">場所の指定方法</div>
+      <div class="methodbar" role="group" aria-label="場所の指定方法">
+        <button type="button" class="method" data-method="center" aria-pressed="true">📍 中心地点</button>
+        <button type="button" class="method" data-method="rect" aria-pressed="false">▱ 四角い範囲</button>
+        <button type="button" class="method" data-method="mesh" aria-pressed="false">▦ メッシュコード</button>
+      </div>
+      <div id="method-center">
+        <label class="field-label" for="coords">Googleマップでコピーした座標</label>
+        <input class="field" id="coords" type="text" inputmode="text" autocomplete="off" placeholder="例：35.6896, 139.6917" aria-describedby="coordhelp coorderror">
+        <div class="hint" id="coordhelp">緯度、経度の順番で貼り付けます。入力例は新宿付近です。</div>
+        <div class="error" id="coorderror" role="status" aria-live="polite"></div>
+      </div>
+      <div id="method-rect" hidden>
+        <div class="inline-grid">
+          <div><label class="field-label" for="west">西端の経度</label><input class="field" id="west" placeholder="139.700"></div>
+          <div><label class="field-label" for="east">東端の経度</label><input class="field" id="east" placeholder="139.710"></div>
+          <div><label class="field-label" for="south">南端の緯度</label><input class="field" id="south" placeholder="35.690"></div>
+          <div><label class="field-label" for="north">北端の緯度</label><input class="field" id="north" placeholder="35.700"></div>
+        </div>
+        <div class="hint">西・東は経度、南・北は緯度。Googleマップで範囲の角を調べて入力できます。</div>
+        <div class="error" id="recterror" role="status" aria-live="polite"></div>
+      </div>
+      <div id="method-mesh" hidden>
+        <label class="field-label" for="mesh">PLATEAUのメッシュコード</label>
+        <input class="field" id="mesh" placeholder="例：533945..." autocomplete="off">
+        <div class="hint">メッシュコードが分かっている方向け。対応形式の詳細は公式データで確認します。</div>
+        <div class="error" id="mesherror" role="status" aria-live="polite"></div>
+      </div>
+    </div></section>
+    <section class="step" id="size-step" aria-labelledby="size-heading"><div class="number" aria-hidden="true">2</div><div class="body">
+      <h2 id="size-heading">街の広さを選ぶ</h2><p class="sub">最初は小さな範囲がおすすめ。広いほど時間がかかる場合があります。</p>
+      <div class="area-options" role="group" aria-label="生成する街の広さ">
+        <label class="area-choice"><input type="radio" name="size" value="200"><b>小さめ</b><span>200m四方・お試し</span></label>
+        <label class="area-choice"><input type="radio" name="size" value="400" checked><b>ふつう</b><span>400m四方・標準</span></label>
+        <label class="area-choice"><input type="radio" name="size" value="800"><b>広め</b><span>800m四方・処理が重め</span></label>
+      </div>
+      <div class="hint">※選択範囲内のデータ量や地域によって、所要時間は変わります。</div>
+    </div></section>
+    <section class="step" aria-labelledby="save-heading"><div class="number" aria-hidden="true">3</div><div class="body">
+      <h2 id="save-heading">ファイル名を決める</h2>
+      <div class="save-row"><input class="field" id="output" value="scene.blend" aria-label="保存するファイル名"><button class="action-secondary" id="savebtn" type="button">保存先を変更</button></div>
+      <div class="hint" id="savehint">実際のアプリでは「保存先を変更」からWindowsの保存ダイアログを開きます。</div>
+      <div class="error" id="saveerror" role="status" aria-live="polite"></div>
+    </div></section>
+    <section class="summary" aria-labelledby="summary-heading">
+      <h2 id="summary-heading">これから作るもの</h2>
+      <div class="summary-panel"><div class="summary-icon" aria-hidden="true">🏙️</div><div><strong id="summary-title">場所の座標を入力してください</strong><span class="sub" id="summary-detail">建物・地形・航空写真をまとめて準備します</span></div></div>
+      <button type="button" id="generate" class="primary">3Dの街を作る</button>
+      <div class="status"><span class="dot" aria-hidden="true"></span><span id="status" class="status-msg">画面試作のため、生成ボタンは「内容の確認」まで動きます。</span></div>
+    </section>
+    <details id="advanced"><summary>⚙️ 詳細設定と動作確認（慣れた方向け）</summary><div class="inner">
+      <p class="sub">現在のWindows版で使われている設定項目の配置例です。値は現行の実機検証記録に合わせた仮の表示です。</p>
+      <div class="advanced-grid">
+        <div><label class="field-label" for="epsg">座標系（EPSG）</label><input id="epsg" class="field" value="AUTO"></div>
+        <div><label class="field-label" for="lod">建物データ</label><select id="lod" class="field"><option value="textured_max_lod">テクスチャ優先・最大LOD</option><option>max_lod</option><option>min_lod</option></select></div>
+        <div><label class="field-label" for="zoom">航空写真ズーム</label><select class="field" id="zoom"><option>14</option><option>15</option><option>16</option><option>17</option><option selected>18</option></select></div>
+        <div><label class="field-label" for="terrain">地形サンプル密度</label><select class="field" id="terrain"><option>40</option><option>60</option><option selected>100</option><option>160</option><option>256</option></select></div>
+        <div><label class="field-label" for="axis">OBJ座標軸</label><select class="field" id="axis"><option selected>auto</option><option>xyz</option><option>yxz</option></select></div>
+        <div><label class="field-label" for="clip">矩形範囲への切り出し</label><select class="field" id="clip"><option selected>有効（現行既定）</option><option>無効</option></select></div>
+        <div class="path-row"><label class="field-label" for="blenderpath">Blender実行ファイル</label><input id="blenderpath" class="field" placeholder="自動検出されたパスをここに表示"></div>
+        <div class="path-row"><label class="field-label" for="nusamaipath">nusamai実行ファイル</label><input id="nusamaipath" class="field" placeholder="同梱版を自動検出"></div>
+      </div>
+      <p class="notice">本試作では、再スキャン・環境診断・自己診断・手動OBJモードは実行できません。実装時にこの領域へ移します。</p>
+    </div></details>
+    <details><summary>ⓘ 操作のヘルプと詳しい処理ログ</summary><div class="inner"><p class="sub">実装時は、操作中に起きたことを初心者向けの日本語で表示します。詳しいログ、コピー、問題報告用ファイルの保存はここにまとめます。</p><p class="hint">例：データの検索 → 建物の変換 → 地形・写真の取得 → Blender保存・検証</p></div></details>
+  </div>
+  <footer><span>建物：国土交通省 Project PLATEAU　／　地形・航空写真：国土地理院</span><span>GUI設計試作 v1 — 実データの生成・取得はしません</span></footer>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title"><div class="modal-inner"><h2 id="dialog-title">作成内容の確認</h2><p id="modal-message"></p><p class="notice">これは画面の試作です。実際の都市データ取得やBlenderファイルの生成は開始しません。</p><div class="modal-actions"><button type="button" class="action-secondary" id="close-dialog">閉じる</button></div></div></dialog>
+<script>
+/* PURE_START */
+function parseCoordinates(input){
+  const normalized=String(input).trim().replace(/[，、]/g,',').replace(/\s*,\s*/g,',');
+  const parts=normalized.split(',');
+  if(parts.length!==2)throw new Error('「緯度, 経度」の2つの数字を貼り付けてください。');
+  const numberPattern=/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+  if(!parts.every(x=>numberPattern.test(x)))throw new Error('座標は数字で入力してください。例：35.6896, 139.6917');
+  const [lat,lon]=parts.map(Number);
+  if(lat< -90||lat>90)throw new Error('緯度は -90〜90 の範囲で入力してください。');
+  if(lon< -180||lon>180)throw new Error('経度は -180〜180 の範囲で入力してください。');
+  return {lat,lon};
+}
+function parseRectangle(values){
+  const keys=['west','east','south','north'];
+  const x={};const pat=/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+  for(const key of keys){const s=String(values[key]??'').trim();if(!pat.test(s))throw new Error('西・東・南・北の4つの欄を数字で入力してください。');x[key]=Number(s);}
+  if(x.west< -180||x.west>180||x.east< -180||x.east>180||x.south< -90||x.south>90||x.north< -90||x.north>90||x.west>=x.east||x.south>=x.north)throw new Error('西端は東端より小さく、南端は北端より小さくしてください。');
+  return x;
+}
+function normalizedName(value){
+  const name=String(value).trim();
+  if(!name)throw new Error('保存するファイル名を入力してください。');
+  if(!/\.blend$/i.test(name))throw new Error('ファイル名は .blend で終わる名前にしてください。');
+  if(/[\\/<>:"|?*]/.test(name))throw new Error('ファイル名に使えない記号が含まれています。');
+  return name;
+}
+/* PURE_END */
+const $$=id=>document.getElementById(id);
+let method='center';
+const methods=['center','rect','mesh'];
+function setMethod(next){
+  method=next;
+  for(const x of methods){$$('method-'+x).hidden=x!==next;document.querySelector(`[data-method="${x}"]`).setAttribute('aria-pressed',String(x===next));}
+  $$('size-step').hidden=next!=='center';
+  update();
+}
+function getPlan(){
+  const filename=normalizedName($$('output').value);
+  if(method==='center'){
+    const {lat,lon}=parseCoordinates($$('coords').value);
+    const size=Number(document.querySelector('input[name="size"]:checked').value);
+    return {title:`緯度 ${lat}、経度 ${lon} の周辺`,description:`${size}m四方の街を作成（建物・地形・航空写真）`,condition:`center:${lat},${lon},${size}`,filename};
+  }
+  if(method==='rect'){
+    const x=parseRectangle(Object.fromEntries(['west','east','south','north'].map(k=>[k,$$(k).value])));
+    return {title:'指定した四角い範囲',description:'指定矩形の建物・地形・航空写真を作成',condition:`r:${x.west},${x.south},${x.east},${x.north}`,filename};
+  }
+  const mesh=$$('mesh').value.trim();
+  if(!/^\d{4,10}$/.test(mesh))throw new Error('メッシュコードは4〜10桁の数字で入力してください。');
+  return {title:`メッシュ ${mesh}`,description:'指定したメッシュの都市モデルを作成（範囲は元データに依存）',condition:`m:${mesh}`,filename};
+}
+function update(){
+  for(const x of ['coorderror','recterror','mesherror','saveerror'])$$(x).textContent='';
+  for(const x of ['coords','west','east','south','north','mesh','output'])$$(x).classList.remove('invalid');
+  try{
+    const plan=getPlan();$$('summary-title').textContent=plan.title;
+    $$('summary-detail').textContent=plan.description+`　/　保存：${plan.filename}`;
+    $$('generate').disabled=false;$$('status').textContent='作成前の確認ができます。';
+  }catch(e){
+    $$('summary-title').textContent='場所と保存名を入力してください';$$('summary-detail').textContent='建物・地形・航空写真をまとめて準備します';
+    $$('generate').disabled=false;$$('status').textContent='入力を確認するために「3Dの街を作る」を押してください。';
+  }
+}
+function showErrors(){
+  for(const x of ['coorderror','recterror','mesherror','saveerror'])$$(x).textContent='';
+  for(const x of ['coords','west','east','south','north','mesh','output'])$$(x).classList.remove('invalid');
+  try{return getPlan();}catch(e){
+    let errorId=method==='center'?'coorderror':method==='rect'?'recterror':'mesherror';
+    if(e.message.includes('ファイル名')||e.message.includes('.blend'))errorId='saveerror';
+    $$(errorId).textContent=e.message;
+    const focusId=errorId==='saveerror'?'output':method==='center'?'coords':method==='rect'?'west':'mesh';
+    $$(focusId).classList.add('invalid');$$(focusId).focus();return null;
+  }
+}
+for(const btn of document.querySelectorAll('[data-method]'))btn.addEventListener('click',()=>setMethod(btn.dataset.method));
+for(const el of document.querySelectorAll('input,select'))el.addEventListener('input',update);
+$$('savebtn').addEventListener('click',()=>alert('画面試作のため保存ダイアログは使えません。完成版ではWindowsのファイル保存ダイアログを開きます。'));
+$$('generate').addEventListener('click',()=>{
+  const p=showErrors();if(!p)return;
+  $$('modal-message').textContent=`${p.title}\n${p.description}\n保存ファイル：${p.filename}\n内部条件：${p.condition}`;
+  $$('modal-message').style.whiteSpace='pre-line';$$('dialog').showModal();
+});
+$$('close-dialog').addEventListener('click',()=>$$('dialog').close());
+update();
+</script>
+</body></html>
