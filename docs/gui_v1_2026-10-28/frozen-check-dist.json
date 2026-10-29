@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "bundled_nusamai": "C:\\Users\\You\\Workspace\\PLATEAU-Blender-Bridge\\dist\\PLATEAU-Blender-Bridge\\tools\\nusamai\\nusamai.exe",
+  "bundled_blender_scripts": [
+    "blender_scene.py",
+    "blender_verify.py"
+  ],
+  "missing_scripts": [],
+  "proj_data_found": true,
+  "image_library": "Pillow",
+  "tcl_version": "8.6.12",
+  "coordinate_sample": [
+    -52143.034206341305,
+    -130757.581040102
+  ]
+}

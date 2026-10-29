@@ -35,6 +35,13 @@
   - `textured_max_lod` → `_runs\gui_v1_ikeda_tex\ikeda_tex.blend`、`verify_b53a940970ae.json`：建物テクスチャ元1件、画像2枚pack
 - 画面：`gui_easy.png`（簡単画面）、`gui_advanced.png`（詳細展開）、`exe_easy.png`（凍結EXE起動、状態「準備OK」）
 
+## 配布物の入れ替え（2026-10-29）
+
+- 旧 `dist`（2026-10-21ビルド）を `dist-old\PLATEAU-Blender-Bridge-2026-10-21\` と同ZIPへ退避
+- 検証済みの `dist-next` を `dist` へ昇格。`dist\PLATEAU-Blender-Bridge.zip` を再生成（37.3MB、1,089エントリ）
+- 昇格後の `dist` で再確認：`--self-check` → `passed: true`（`frozen-check-dist.json`）、`--cli` 池田 `max_lod` → exit 0、`verify_f77466475a0b.json` 合格
+- 空になった `dist-next` と `build-next` はビルド用の中間物なので残置
+
 ## 未確認
 
 - 125%/150% 実表示での見切れ（コード対応のみ。表示倍率を変えた実機確認は未実施）
