@@ -67,13 +67,22 @@ def completion_message(path:Path)->str:
     return f'作成できました。保存先: {path}'
 
 
+CANCELLED_MESSAGE='中止しました。もう一度「3Dの街を作る」で作り直せます（取得済みのデータは残っています）。'
+
+
+def initial_geometry(screen_w:int,screen_h:int)->str:
+    """Default 900x780, shrunk so the frame and taskbar still fit on small screens like 1366x768."""
+    return f'{min(900,screen_w-40)}x{max(580,min(780,screen_h-130))}'
+
+
 class AutoGui(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f'PLATEAU → Blender | 自動生成 v{__version__.rsplit(".",1)[0]}')
-        self.geometry('900x780')
+        self.geometry(initial_geometry(self.winfo_screenwidth(),self.winfo_screenheight()))
         self.minsize(730,580)
         self._apply_scaling()
+        ttk.Style(self).configure('Primary.TButton',font=('Yu Gothic UI',12,'bold'),padding=8)
         self.queue=queue.Queue()
         self.vars={}
         self.running=False
@@ -97,6 +106,28 @@ class AutoGui(tk.Tk):
             if widget is self.log:return
             widget=getattr(widget,'master',None)
         self.canvas.yview_scroll(int(-event.delta/120),'units')
+
+    def radio_group(self,parent,variable,choices,command=None):
+        """Radio buttons that take one Tab stop as a group; arrow keys change the choice."""
+        buttons=[]
+        def step(delta):
+            self.step_radio(buttons,variable,[value for _,value in choices],delta,command)
+            return 'break'
+        for label,value in choices:
+            # Tk's traversal calls takefocus with the widget path appended.
+            button=ttk.Radiobutton(parent,text=label,variable=variable,value=value,command=command or '',
+                                   takefocus=lambda _widget='',v=value:variable.get()==v)
+            button.pack(side='left',padx=4)
+            for key,delta in (('<Left>',-1),('<Up>',-1),('<Right>',1),('<Down>',1)):
+                button.bind(key,lambda event,d=delta:step(d))
+            buttons.append(button)
+        return buttons
+
+    @staticmethod
+    def step_radio(buttons,variable,values,delta,command=None):
+        index=(values.index(variable.get())+delta)%len(values) if variable.get() in values else 0
+        variable.set(values[index]);buttons[index].focus_set()
+        if command:command()
 
     def create_widgets(self):
         canvas=tk.Canvas(self,highlightthickness=0)
@@ -123,8 +154,7 @@ class AutoGui(tk.Tk):
         self.preset.bind('<<ComboboxSelected>>',self.apply_preset)
         self.applying_preset=False
         modes=ttk.Frame(place);modes.grid(row=4,column=0,sticky='w')
-        for label,value in [('中心点','center'),('矩形','bbox'),('メッシュコード','mesh')]:
-            ttk.Radiobutton(modes,text=label,variable=self.mode,value=value,command=self.update_area).pack(side='left',padx=4)
+        self.radio_group(modes,self.mode,[('中心点','center'),('矩形','bbox'),('メッシュコード','mesh')],command=self.update_area)
         self.area_label=ttk.Label(place,text=CENTER_LABEL);self.area_label.grid(row=5,column=0,sticky='w')
         self.area=tk.StringVar(value='')
         self.area_entry=ttk.Entry(place,textvariable=self.area);self.area_entry.grid(row=6,column=0,sticky='ew')
@@ -135,8 +165,7 @@ class AutoGui(tk.Tk):
         self.area.trace_add('write',self.area_changed)
         size=ttk.LabelFrame(container,text='② 広さを選ぶ（中心点の場合）',padding=8);size.grid(row=3,column=0,sticky='ew',pady=5)
         self.size=tk.StringVar(value='400')
-        for label,value in [('小さめ 200m','200'),('標準 400m','400'),('広め 800m','800'),('入力欄の指定を使う','input')]:
-            ttk.Radiobutton(size,text=label,variable=self.size,value=value).pack(side='left',padx=4)
+        self.size_radios=self.radio_group(size,self.size,[('小さめ 200m','200'),('標準 400m','400'),('広め 800m','800'),('入力欄の指定を使う','input')])
         save=ttk.LabelFrame(container,text='③ 保存先',padding=8);save.grid(row=4,column=0,sticky='ew');save.columnconfigure(0,weight=1)
         self.blender_var=tk.StringVar();self.nusamai_var=tk.StringVar()
         self.output_var=tk.StringVar(value=str(Path.home()/'Documents'/'PLATEAU'/'scene.blend'))
@@ -145,10 +174,11 @@ class AutoGui(tk.Tk):
         ttk.Label(save,textvariable=self.output_name,font=('Yu Gothic UI',11)).grid(row=0,column=0,sticky='w')
         ttk.Button(save,text='保存先を変更',command=lambda:self.choose(self.output_var,'save')).grid(row=0,column=1,padx=5)
         ttk.Label(save,text='同じ名前のファイルがある時は、上書きせず別の名前にして保存します。',wraplength=700).grid(row=1,column=0,columnspan=2,sticky='w')
-        actions=ttk.Frame(container);actions.grid(row=5,column=0,sticky='ew',pady=8)
-        self.generate_button=ttk.Button(actions,text='3Dの街を作る',command=self.start_generate);self.generate_button.pack(side='left',expand=True,fill='x')
-        self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.pack(side='left',padx=4)
-        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled')
+        actions=ttk.Frame(container);actions.grid(row=5,column=0,sticky='ew',pady=8);actions.columnconfigure(0,weight=1)
+        self.generate_button=ttk.Button(actions,text='3Dの街を作る',command=self.start_generate);self.generate_button.grid(row=0,column=0,sticky='ew')
+        self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.grid(row=0,column=1,padx=(4,0))
+        # Shown only after a result exists; full width below so it reads as the next step.
+        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled',style='Primary.TButton')
         self.status=tk.StringVar(value='環境スキャン中…')
         self.status_label=ttk.Label(container,textvariable=self.status,wraplength=700);self.status_label.grid(row=6,column=0,sticky='w')
         self.progress=ttk.Progressbar(container,mode='determinate',value=0);self.progress.grid(row=7,column=0,sticky='ew')
@@ -220,7 +250,9 @@ class AutoGui(tk.Tk):
 
     def choose(self,var,kind):
         if kind=='save':
-            filename=filedialog.asksaveasfilename(filetypes=[('Blender','*.blend')],defaultextension='.blend')
+            current=Path(self.output_var.get())
+            filename=filedialog.asksaveasfilename(filetypes=[('Blender','*.blend')],defaultextension='.blend',
+                initialdir=self.existing_dir(current.parent),initialfile=current.name)
         else:
             filename=filedialog.askopenfilename(filetypes=[('Windows executable','*.exe'),('Any file','*.*')])
         if filename:var.set(filename)
@@ -256,6 +288,7 @@ class AutoGui(tk.Tk):
         self.progress.configure(mode='indeterminate');self.progress.start(14)
         def worker():
             try:method(request)
+            except CancelledError:self.queue.put(('cancelled',CANCELLED_MESSAGE))
             except Exception as exc:self.queue.put(('error',user_error(exc)))
             else:self.queue.put(('done','完了'))
         threading.Thread(target=worker,daemon=True).start()
@@ -305,7 +338,7 @@ class AutoGui(tk.Tk):
             renamed='\n（同じ名前のファイルがあるので、上書きせず新しい名前で保存します）'
         if not messagebox.askyesno('作成内容の確認',f'場所: {self.area.get()}\n広さ: {self.size.get()}（入力欄に広さ・矩形がある場合はそちらを優先）\n保存先: {request.output_blend}{renamed}\n\n建物・地形・航空写真を取得して作成します。よろしいですか？'):
             return
-        self.last_result=None;self.result_kind=None;self.open_button.configure(state='disabled',text='Blenderで街を開く');self.open_button.pack_forget()
+        self.last_result=None;self.result_kind=None;self.open_button.configure(state='disabled',text='Blenderで街を開く');self.open_button.grid_remove()
         def job(req):
             result=generate(req,log=self.queue_msg,cancel=self.cancel_token)
             self.queue.put(('result',str(result)))
@@ -343,6 +376,7 @@ class AutoGui(tk.Tk):
             try:
                 output=run_smoke(blender=binary,output_parent=Path(self.output_var.get()).expanduser().resolve().parent/'diagnostics',log=self.queue_msg,cancel=self.cancel_token)
                 self.queue.put(('smoke_result',str(output)))
+            except CancelledError:self.queue.put(('cancelled','Blender自己診断を中止しました。'))
             except Exception as exc:self.queue.put(('error',f'{type(exc).__name__}: {exc}'))
             else:self.queue.put(('done','Blender自己診断成功。検証用 .blend を開いて確認できるよ。'))
         threading.Thread(target=worker,daemon=True).start()
@@ -373,9 +407,17 @@ class AutoGui(tk.Tk):
     def log_text(self)->str:
         return self.log.get('1.0','end-1c')
 
+    @staticmethod
+    def existing_dir(folder:Path)->str:
+        """Nearest existing folder, so dialogs open beside the city files instead of Documents root."""
+        folder=folder.expanduser()
+        while not folder.is_dir() and folder.parent!=folder:folder=folder.parent
+        return str(folder)
+
     def save_log(self):
         filename=filedialog.asksaveasfilename(defaultextension='.txt',
-            filetypes=[('テキスト','*.txt'),('すべてのファイル','*.*')],initialfile='plateau_bridge_log.txt')
+            filetypes=[('テキスト','*.txt'),('すべてのファイル','*.*')],initialfile='plateau_bridge_log.txt',
+            initialdir=self.existing_dir(Path(self.output_var.get()).parent))
         if not filename:return
         try:Path(filename).write_text(self.log_text(),encoding='utf-8')
         except OSError as exc:messagebox.showerror('保存できませんでした',str(exc));return
@@ -404,7 +446,7 @@ class AutoGui(tk.Tk):
                 elif kind in ('result','smoke_result'):
                     self.last_result=Path(data);self.result_kind=kind
                     self.open_button.configure(state='normal',text='Blenderで街を開く' if kind=='result' else '診断ファイルを開く')
-                    if not self.open_button.winfo_manager():self.open_button.pack(side='left')
+                    if not self.open_button.winfo_manager():self.open_button.grid(row=1,column=0,columnspan=2,sticky='ew',pady=(6,0))
                 else:
                     self.running=False;self.generate_stage=0;self.progress.stop()
                     self.progress.configure(mode='determinate',value=0)
@@ -414,10 +456,14 @@ class AutoGui(tk.Tk):
                     if kind=='error':
                         self.status.set(data if data.startswith('この場所には') else '処理に失敗しました。詳細設定のログを確認してください。')
                         messagebox.showerror('処理失敗',data)
+                    elif kind=='cancelled':
+                        self.status.set(data)
+                        messagebox.showinfo('中止しました',data)
                     elif self.result_kind=='result' and self.last_result:
                         message=completion_message(self.last_result)
                         self.status.set(message)
                         messagebox.showinfo('作成できました',f'{message}\n\n「Blenderで街を開く」から開けます。')
+                        self.open_button.focus_set()
                     else:
                         self.status.set(data)
                         messagebox.showinfo('処理完了',data)

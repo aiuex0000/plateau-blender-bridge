@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 from plateau_blend.auto import center_condition
 from plateau_blend.auto_gui import (AutoGui, PLACE_PRESETS, free_output_path, user_error,
-                                    stage_for, completion_message)
+                                    stage_for, completion_message, initial_geometry,
+                                    CANCELLED_MESSAGE)
 from plateau_blend.catalog import NoPlateauData
 from plateau_blend.runtime import enable_dpi_awareness
 from plateau_blend import __version__
@@ -120,8 +121,61 @@ class AutoGuiHelperTests(unittest.TestCase):
         self.assertIn('scene_3.blend',gui.status.get())
         self.assertEqual(info.call_count,1)
         self.assertIn('scene_3.blend',info.call_args[0][1])
-        self.assertEqual(gui.open_button.winfo_manager(),'pack')
+        self.assertEqual(gui.open_button.winfo_manager(),'grid')
+        self.assertEqual(gui.open_button.grid_info()['columnspan'],2)
         self.assertEqual(str(gui.open_button.cget('state')),'normal')
+
+    def test_cancel_is_reported_as_stopped_not_failed(self):
+        try:
+            with patch.object(AutoGui,'scan_dependencies'):
+                gui=AutoGui()
+        except tk.TclError as exc:
+            self.skipTest(f'Tk unavailable: {exc}')
+        self.addCleanup(gui.destroy)
+        gui.withdraw()
+        with patch('plateau_blend.auto_gui.messagebox.showinfo') as info, \
+             patch('plateau_blend.auto_gui.messagebox.showerror') as error:
+            gui.running=True
+            gui.queue.put(('cancelled',CANCELLED_MESSAGE))
+            gui.poll()
+        error.assert_not_called()
+        self.assertEqual(info.call_args[0][0],'中止しました')
+        self.assertNotIn('Error',gui.status.get())
+        self.assertNotIn('失敗',gui.status.get())
+        self.assertFalse(gui.running)
+        self.assertEqual(str(gui.generate_button.cget('state')),'normal')
+
+    def test_initial_window_fits_small_screens(self):
+        self.assertEqual(initial_geometry(1920,1080),'900x780')
+        self.assertEqual(initial_geometry(1366,768),'900x638')
+        self.assertEqual(initial_geometry(1024,600),'900x580')
+
+    def test_radio_group_is_one_tab_stop_with_arrow_keys(self):
+        try:
+            with patch.object(AutoGui,'scan_dependencies'):
+                gui=AutoGui()
+        except tk.TclError as exc:
+            self.skipTest(f'Tk unavailable: {exc}')
+        self.addCleanup(gui.destroy)
+        gui.withdraw()
+        # Tk's traversal calls the takefocus command with the widget path appended.
+        stops=[r for r in gui.size_radios if int(gui.tk.call(r.cget('takefocus'),str(r)))]
+        self.assertEqual(stops,[gui.size_radios[1]])
+        self.assertEqual(gui.size.get(),'400')
+        self.assertTrue(gui.size_radios[1].bind('<Right>'))
+        gui.step_radio(gui.size_radios,gui.size,['200','400','800','input'],1)
+        self.assertEqual(gui.size.get(),'800')
+        gui.step_radio(gui.size_radios,gui.size,['200','400','800','input'],-1)
+        gui.step_radio(gui.size_radios,gui.size,['200','400','800','input'],-1)
+        self.assertEqual(gui.size.get(),'200')
+        gui.step_radio(gui.size_radios,gui.size,['200','400','800','input'],1)
+        gui.step_radio(gui.size_radios,gui.size,['200','400','800','input'],1)
+        # The Tab stop follows the new choice.
+        self.assertEqual(int(gui.tk.call(gui.size_radios[2].cget('takefocus'),str(gui.size_radios[2]))),1)
+
+    def test_existing_dir_climbs_to_a_real_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(AutoGui.existing_dir(Path(tmp)/'missing'/'deeper'),tmp)
 
 
 if __name__=='__main__': unittest.main()
