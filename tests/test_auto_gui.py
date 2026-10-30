@@ -6,7 +6,7 @@ from unittest.mock import patch
 from plateau_blend.auto import center_condition
 from plateau_blend.auto_gui import (AutoGui, PLACE_PRESETS, free_output_path, user_error,
                                     stage_for, completion_message, initial_geometry,
-                                    CANCELLED_MESSAGE)
+                                    CANCELLED_MESSAGE, BLENDER_DOWNLOAD_URL)
 from plateau_blend.catalog import NoPlateauData
 from plateau_blend.runtime import enable_dpi_awareness
 from plateau_blend import __version__
@@ -176,6 +176,25 @@ class AutoGuiHelperTests(unittest.TestCase):
     def test_existing_dir_climbs_to_a_real_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(AutoGui.existing_dir(Path(tmp)/'missing'/'deeper'),tmp)
+
+    def test_blender_link_is_hidden_until_blender_is_missing(self):
+        try:
+            with patch.object(AutoGui,'scan_dependencies'):
+                gui=AutoGui()
+        except tk.TclError as exc:
+            self.skipTest(f'Tk unavailable: {exc}')
+        self.addCleanup(gui.destroy)
+        gui.withdraw()
+        self.assertEqual(gui.blender_link_button.winfo_manager(),'')
+        gui.queue.put(('scan',([],Path('n.exe'))))
+        gui.poll()
+        self.assertEqual(gui.blender_link_button.winfo_manager(),'grid')
+        self.assertIn('公式サイト',gui.status.get())
+        with patch('plateau_blend.auto_gui.webbrowser.open') as open_url:
+            gui.blender_link_button.invoke()
+        open_url.assert_called_once_with(BLENDER_DOWNLOAD_URL)
+        gui.blender_var.set(r'C:\b\blender.exe')
+        self.assertEqual(gui.blender_link_button.winfo_manager(),'')
 
 
 if __name__=='__main__': unittest.main()

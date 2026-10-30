@@ -21,6 +21,7 @@ from .smoke import run_smoke
 from .catalog import NoPlateauData
 from . import __version__
 
+BLENDER_DOWNLOAD_URL='https://www.blender.org/download/'
 CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
 CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は下の選択を使用。矩形の4つの数字もOK）'
 PLACE_PRESETS=(
@@ -179,6 +180,9 @@ class AutoGui(tk.Tk):
         self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.grid(row=0,column=1,padx=(4,0))
         # Shown only after a result exists; full width below so it reads as the next step.
         self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled',style='Primary.TButton')
+        self.blender_link_button=ttk.Button(actions,text='Blenderを入手する（公式サイト）',command=lambda:webbrowser.open(BLENDER_DOWNLOAD_URL))
+        self.blender_link_button.grid(row=2,column=0,columnspan=2,sticky='ew',pady=(6,0));self.blender_link_button.grid_remove()
+        self.blender_var.trace_add('write',lambda *_:self.update_blender_link())
         self.status=tk.StringVar(value='環境スキャン中…')
         self.status_label=ttk.Label(container,textvariable=self.status,wraplength=700);self.status_label.grid(row=6,column=0,sticky='w')
         self.progress=ttk.Progressbar(container,mode='determinate',value=0);self.progress.grid(row=7,column=0,sticky='ew')
@@ -216,6 +220,10 @@ class AutoGui(tk.Tk):
     def area_changed(self,*_):
         self.place_info.set('')
         if not self.applying_preset:self.preset.set('')
+
+    def update_blender_link(self):
+        if not self.blender_var.get():self.blender_link_button.grid()
+        else:self.blender_link_button.grid_remove()
 
     def apply_preset(self,event=None):
         index=self.preset.current()
@@ -435,7 +443,11 @@ class AutoGui(tk.Tk):
                     blender,nusamai=data
                     if blender and not self.blender_var.get():self.blender_var.set(str(blender[0]))
                     if nusamai and not self.nusamai_var.get():self.nusamai_var.set(str(nusamai))
-                    if not self.generate_stage:self.status.set('準備OK' if blender and nusamai else '必要なソフトが見つかりません。詳細設定で確認してください。')
+                    self.update_blender_link()
+                    if not self.generate_stage:
+                        if blender and nusamai:self.status.set('準備OK')
+                        elif not blender and not self.blender_var.get():self.status.set('Blenderが見つかりません。下のボタンから公式サイトで入れてから、詳細設定の「再スキャン」を押してください。')
+                        else:self.status.set('必要なソフトが見つかりません。詳細設定で確認してください。')
                 elif kind=='place':
                     self.place_info.set(data);self.check_button.configure(state='normal')
                 elif kind=='log':
