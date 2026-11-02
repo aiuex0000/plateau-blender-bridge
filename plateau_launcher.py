@@ -49,6 +49,15 @@ def report_crash(error: BaseException) -> None:
         pass
 
 
+def _open_web_gui() -> bool:
+    """新しい画面を先に開く。pywebview も WebView2 も無い時は黙って False を返す。"""
+    try:
+        from plateau_blend.web_gui import main as web_main
+        return bool(web_main())
+    except Exception:
+        return False
+
+
 def main(args: list[str] | None = None) -> int:
     if args is None:args=sys.argv[1:]
     try:
@@ -61,11 +70,15 @@ def main(args: list[str] | None = None) -> int:
         elif args[:1]==['--cli']:
             from plateau_blend.auto_cli import main as cli_main
             return int(cli_main(args[1:]) or 0)
+        elif args[:1]==['--legacy']:
+            from plateau_blend.auto_gui import main as auto_main
+            auto_main()
         elif args:
             raise ValueError('Unknown argument: '+args[0])
         else:
-            from plateau_blend.auto_gui import main as auto_main
-            auto_main()
+            if not _open_web_gui():
+                from plateau_blend.auto_gui import main as auto_main
+                auto_main()
     except Exception as exc:
         report_crash(exc)
         return 1

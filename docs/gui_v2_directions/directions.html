@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GUI見た目3案</title>
+<style>
+/* 比較ページ自体の枠。アプリの見た目は各 .mock の中だけ */
+:root{--page:#E9EBEF;--ink:#1B1D21;--muted:#5D636B}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:"Yu Gothic UI","Segoe UI",sans-serif}
+.picker{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid #D5D8DD}
+.picker b{font-size:14px}
+.seg{display:flex;border:1px solid #B9BEC5;border-radius:8px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:7px 14px;font:inherit;font-size:13px;cursor:pointer}
+.seg button+button{border-left:1px solid #B9BEC5}
+.seg button[aria-pressed=true]{background:#1B1D21;color:#fff}
+.note{font-size:12px;color:var(--muted);max-width:760px;margin:12px auto 0;padding:0 16px}
+.stage{display:flex;justify-content:center;padding:16px}
+.mock{display:none;width:100%;max-width:780px}
+.mock.on{display:block}
+.win{border-radius:10px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.18);background:#fff}
+.titlebar{height:32px;display:flex;align-items:center;padding:0 12px;font-size:12px;gap:8px}
+.titlebar .sp{flex:1}
+.titlebar i{width:10px;height:1px;background:currentColor;display:inline-block;margin-left:18px;opacity:.6}
+svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+body[data-state=input] [data-show]:not([data-show~=input]),
+body[data-state=run] [data-show]:not([data-show~=run]),
+body[data-state=done] [data-show]:not([data-show~=done]){display:none!important}
+
+/* ───── A. Material 3 ───── */
+#A{--p:#00658F;--on-p:#fff;--pc:#C7E7FF;--on-pc:#001E2E;--sc:#4F616E;--scc:#D2E5F5;--surf:#F6FAFE;--sc1:#EAF0F6;--sc2:#E1E8EF;--on:#171C20;--var:#41484D;--ol:#71787E;--ok:#E2F5D9;--on-ok:#173B0B;
+  font-family:"BIZ UDPGothic","Yu Gothic UI",sans-serif;color:var(--on)}
+#A .win{background:var(--surf);border-radius:28px}
+#A .titlebar{background:var(--surf);color:var(--var)}
+#A .body{padding:4px 24px 24px}
+#A .hero{display:flex;gap:16px;align-items:center;padding:20px;border-radius:28px;background:linear-gradient(135deg,var(--pc),#E4DFFF);margin-bottom:16px}
+#A .hero .logo{width:56px;height:56px;border-radius:18px;background:var(--p);color:#fff;display:grid;place-items:center}
+#A .hero .logo svg{width:30px;height:30px}
+#A h1{font-size:24px;margin:0;font-weight:700}
+#A .hero p{margin:4px 0 0;color:var(--var);font-size:14px}
+#A .card{background:#fff;border-radius:24px;padding:20px;margin-bottom:12px}
+#A .card h2{display:flex;align-items:center;gap:10px;font-size:17px;margin:0 0 4px}
+#A .num{width:28px;height:28px;border-radius:50%;background:var(--pc);color:var(--on-pc);display:grid;place-items:center;font-size:14px}
+#A .sub{color:var(--var);font-size:13px;margin:0 0 14px 38px}
+#A .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+#A .chip{border:1px solid var(--ol);background:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;color:var(--var);display:flex;gap:6px;align-items:center}
+#A .chip svg{width:16px;height:16px}
+#A .chip.sel{background:var(--scc);border-color:var(--scc);color:var(--on-pc)}
+#A .tonal{background:var(--scc);color:var(--on-pc);border:0;border-radius:20px;padding:10px 20px;font:inherit;font-size:14px;display:inline-flex;gap:8px;align-items:center}
+#A .segm{display:inline-flex;border:1px solid var(--ol);border-radius:20px;overflow:hidden;margin:4px 0 14px}
+#A .segm span{padding:8px 16px;font-size:13px;display:flex;gap:6px;align-items:center}
+#A .segm span+span{border-left:1px solid var(--ol)}
+#A .segm .sel{background:var(--scc)}
+#A .field{position:relative;display:flex;gap:8px;align-items:center}
+#A .field .box{flex:1;border:1px solid var(--ol);border-radius:4px;padding:14px 12px 10px;font-size:15px;position:relative}
+#A .field .box label{position:absolute;top:-9px;left:10px;background:#fff;padding:0 4px;font-size:12px;color:var(--p)}
+#A .field .box{border:2px solid var(--p)}
+#A .text-btn{background:none;border:0;color:var(--p);font:inherit;font-size:14px;padding:10px 12px}
+#A .found{margin-top:10px;display:flex;gap:8px;align-items:center;font-size:13px;color:var(--on-ok);background:var(--ok);border-radius:12px;padding:10px 12px}
+#A .sizes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+#A .size{border:1px solid #C1C7CE;border-radius:16px;padding:12px;text-align:center;font-size:13px}
+#A .size .sq{margin:0 auto 8px;background:var(--sc2);border-radius:4px}
+#A .size.sel{border:2px solid var(--p);background:var(--sc1)}
+#A .size b{display:block;font-size:15px}
+#A .save{display:flex;align-items:center;gap:12px}
+#A .save .fn{flex:1;font-size:15px}
+#A .save small{display:block;color:var(--var);font-size:12px}
+#A .fab{width:100%;border:0;border-radius:20px;background:var(--p);color:var(--on-p);font:inherit;font-size:17px;font-weight:700;padding:18px;display:flex;justify-content:center;gap:10px;align-items:center;box-shadow:0 3px 8px rgba(0,101,143,.3);margin-top:4px}
+#A .prog{background:#fff;border-radius:24px;padding:20px}
+#A .bar{height:6px;border-radius:3px;background:var(--sc2);overflow:hidden;margin:14px 0}
+#A .bar i{display:block;height:100%;width:58%;background:var(--p);border-radius:3px}
+#A .steps4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:12px;color:var(--var)}
+#A .steps4 span{display:flex;gap:6px;align-items:center}
+#A .steps4 .d{width:18px;height:18px;border-radius:50%;border:2px solid #C1C7CE;flex:none;display:grid;place-items:center}
+#A .steps4 .fin .d{background:var(--p);border-color:var(--p);color:#fff}
+#A .steps4 .cur{color:var(--on);font-weight:700}
+#A .steps4 .cur .d{border-color:var(--p)}
+#A .row-end{display:flex;justify-content:space-between;align-items:center}
+#A .outlined{border:1px solid var(--ol);background:none;border-radius:20px;padding:10px 20px;font:inherit;font-size:14px;color:var(--p)}
+#A .done{background:var(--ok);color:var(--on-ok);border-radius:28px;padding:28px;text-align:center}
+#A .done .big{width:64px;height:64px;border-radius:50%;background:#3B6A26;color:#fff;display:grid;place-items:center;margin:0 auto 12px}
+#A .done .big svg{width:34px;height:34px;stroke-width:2.6}
+#A .done h2{margin:0 0 6px;font-size:22px}
+#A .done .fab{background:#3B6A26;box-shadow:none;margin-top:18px}
+#A .foot{display:flex;justify-content:space-between;font-size:12px;color:var(--var);padding:14px 4px 0}
+
+/* ───── B. 一問ずつのウィザード ───── */
+#B{--p:#D9532B;--p2:#FFDBCF;--ink:#2B1A14;--soft:#FFF8F5;--line:#F0D9D0;--muted:#77574C;--ok:#2E7D4F;
+  font-family:"BIZ UDPGothic","Yu Gothic UI",sans-serif;color:var(--ink)}
+#B .win{background:var(--soft);border-radius:16px}
+#B .titlebar{color:var(--muted)}
+#B .body{padding:8px 36px 28px;min-height:560px;display:flex;flex-direction:column}
+#B .stepper{display:flex;align-items:center;gap:8px;margin:8px 0 28px}
+#B .stepper button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:center;font-size:14px;color:var(--muted)}
+#B .stepper .n{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-weight:700;background:#fff}
+#B .stepper .line{flex:1;height:2px;background:var(--line)}
+#B .stepper .on{color:var(--ink);font-weight:700}
+#B .stepper .on .n{background:var(--p);border-color:var(--p);color:#fff}
+#B .stepper .past .n{background:var(--p2);border-color:var(--p2);color:var(--p)}
+#B .wz[hidden]{display:none!important}
+#B .q{font-size:28px;font-weight:700;margin:0 0 6px}
+#B .qs{color:var(--muted);margin:0 0 22px;font-size:15px}
+#B .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+#B .pick{background:#fff;border:2px solid var(--line);border-radius:18px;padding:16px;font-size:15px;display:flex;flex-direction:column;gap:6px;min-height:96px}
+#B .pick small{color:var(--muted);font-size:12px}
+#B .pick svg{color:var(--p);width:26px;height:26px}
+#B .pick.sel{border-color:var(--p);background:#FFF1EC;box-shadow:0 0 0 4px rgba(217,83,43,.12)}
+#B .pick.wide{grid-column:span 3;flex-direction:row;align-items:center;min-height:0;gap:14px}
+#B .pick.wide div{flex:1}
+#B .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;margin:16px 0}
+#B .or::before,#B .or::after{content:"";flex:1;height:1px;background:var(--line)}
+#B .sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+#B .sizes .pick{align-items:center;text-align:center;padding:22px 12px}
+#B .sizes .sq{background:repeating-linear-gradient(45deg,#F6C7B6 0 6px,#FBE3DA 6px 12px);border-radius:6px;margin-bottom:8px}
+#B .sizes b{font-size:20px}
+#B .file{background:#fff;border:2px solid var(--line);border-radius:18px;padding:22px;display:flex;gap:16px;align-items:center}
+#B .file svg{width:36px;height:36px;color:var(--p)}
+#B .file div{flex:1;font-size:18px}
+#B .file small{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+#B .spacer{flex:1}
+#B .nav{display:flex;justify-content:space-between;align-items:center;margin-top:28px}
+#B .back{all:unset;cursor:pointer;color:var(--muted);font-size:15px;padding:14px 8px}
+#B .next{border:0;border-radius:999px;background:var(--p);color:#fff;font:inherit;font-size:18px;font-weight:700;padding:16px 40px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 16px rgba(217,83,43,.3)}
+#B .more{font-size:13px;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+#B .run{text-align:center;padding-top:20px}
+#B .ring{width:180px;height:180px;margin:0 auto 22px;position:relative}
+#B .ring svg{width:180px;height:180px;transform:rotate(-90deg)}
+#B .ring span{position:absolute;inset:0;display:grid;place-items:center;font-size:36px;font-weight:700}
+#B .run .stage-txt{font-size:22px;font-weight:700;margin:0 0 6px}
+#B .run p{color:var(--muted);margin:0}
+#B .cancel{all:unset;cursor:pointer;margin-top:26px;display:inline-block;border:2px solid var(--line);border-radius:999px;padding:10px 26px;color:var(--muted)}
+#B .party{text-align:center;padding-top:12px}
+#B .party .q{font-size:32px}
+#B .party .cube{width:120px;height:120px;margin:0 auto 18px;border-radius:32px;background:linear-gradient(140deg,#FFB59C,#D9532B);display:grid;place-items:center;color:#fff;transform:rotate(-6deg)}
+#B .party .cube svg{width:64px;height:64px}
+#B .party .next{margin:22px auto 0}
+#B .party .where{margin-top:14px;font-size:13px;color:var(--muted)}
+
+/* ───── C. Windows 11 風 ───── */
+#C{--acc:#0067C0;--acc-h:#1975C5;--ink:#1A1A1A;--sub:#5F5F5F;--card:#FBFBFB;--stroke:#E5E5E5;--ok:#0F7B0F;
+  font-family:"Segoe UI Variable Text","Segoe UI","Yu Gothic UI",sans-serif;color:var(--ink)}
+#C .win{background:linear-gradient(120deg,#EFF4F9 0%,#F3F1F7 50%,#F2F5F3 100%);border-radius:8px;border:1px solid #CFCFCF}
+#C .titlebar{height:40px}
+#C .titlebar .appic{width:16px;height:16px;border-radius:3px;background:var(--acc)}
+#C .layout{display:grid;grid-template-columns:200px 1fr;min-height:560px}
+#C nav{padding:4px 6px}
+#C nav a{display:flex;gap:12px;align-items:center;padding:9px 12px;border-radius:4px;font-size:14px;color:var(--ink);text-decoration:none;position:relative}
+#C nav a.sel{background:rgba(0,0,0,.055)}
+#C nav a.sel::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--acc)}
+#C nav a svg{width:16px;height:16px}
+#C nav hr{border:0;border-top:1px solid var(--stroke);margin:8px 6px}
+#C nav .tag{margin-left:auto;font-size:11px;color:var(--sub)}
+#C main{background:rgba(255,255,255,.55);border-top-left-radius:8px;border-left:1px solid var(--stroke);border-top:1px solid var(--stroke);padding:24px 28px}
+#C h1{font-family:"Segoe UI Variable Display","Segoe UI","Yu Gothic UI",sans-serif;font-size:28px;font-weight:600;margin:0 0 4px}
+#C .lead{color:var(--sub);font-size:14px;margin:0 0 20px}
+#C .grp{font-size:14px;font-weight:600;margin:18px 0 8px}
+#C .rowc{background:var(--card);border:1px solid var(--stroke);border-radius:6px;padding:14px 16px;display:flex;gap:16px;align-items:center;margin-bottom:3px}
+#C .rowc>svg{width:22px;height:22px;color:var(--sub)}
+#C .rowc .t{flex:1;font-size:14px}
+#C .rowc .t small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
+#C .btn{border:1px solid #D1D1D1;border-bottom-color:#BDBDBD;background:#FDFDFD;border-radius:4px;padding:6px 14px;font:inherit;font-size:14px;color:var(--ink)}
+#C .btn.acc{background:var(--acc);border-color:var(--acc-h);color:#fff}
+#C .combo{border:1px solid #D1D1D1;border-bottom:1px solid #8A8A8A;background:#FDFDFD;border-radius:4px;padding:6px 10px;font-size:14px;min-width:200px;display:flex;justify-content:space-between}
+#C .input{border:1px solid #D1D1D1;border-bottom:2px solid var(--acc);background:#fff;border-radius:4px;padding:6px 10px;font-size:14px;min-width:240px}
+#C .radios{display:flex;gap:18px;font-size:14px}
+#C .radios span{display:flex;gap:8px;align-items:center}
+#C .rd{width:18px;height:18px;border-radius:50%;border:1px solid #8A8A8A;background:#fff}
+#C .rd.sel{border:5px solid var(--acc)}
+#C .info{display:flex;gap:10px;align-items:center;background:#DFF6DD;border:1px solid #C5E6C3;border-radius:6px;padding:10px 14px;font-size:13px;margin:-1px 0 3px}
+#C .info svg{color:var(--ok);width:18px;height:18px}
+#C .bar{position:sticky;bottom:0;display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:22px}
+#C .bar .hint{flex:1;font-size:12px;color:var(--sub)}
+#C .bar .btn{padding:8px 22px}
+#C .pbar{height:4px;background:#D9D9D9;border-radius:2px;overflow:hidden;margin:10px 0 4px}
+#C .pbar i{display:block;height:100%;width:58%;background:var(--acc)}
+#C .stagelist{list-style:none;padding:0;margin:0}
+#C .stagelist li{display:flex;gap:12px;align-items:center;font-size:14px;padding:8px 0;color:var(--sub)}
+#C .stagelist .d{width:18px;height:18px;border-radius:50%;border:1px solid #8A8A8A;display:grid;place-items:center}
+#C .stagelist .fin{color:var(--ink)}
+#C .stagelist .fin .d{background:var(--ok);border-color:var(--ok);color:#fff}
+#C .stagelist .fin .d svg{width:12px;height:12px;stroke-width:3}
+#C .stagelist .cur{color:var(--ink);font-weight:600}
+#C .stagelist .cur .d{border:2px solid var(--acc);border-right-color:transparent}
+#C .ok-banner{display:flex;gap:14px;align-items:center;background:#DFF6DD;border:1px solid #C5E6C3;border-radius:6px;padding:16px}
+#C .ok-banner svg{width:28px;height:28px;color:var(--ok)}
+#C .ok-banner b{font-size:16px}
+#C .foot{font-size:11px;color:var(--sub);margin-top:22px}
+</style>
+</head>
+<body data-state="input">
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></symbol>
+  <symbol id="i-city" viewBox="0 0 24 24"><path d="M3 21h18M5 21V9l5-3v15M10 21V4l6 3v14M16 21v-9l3 2v7M7.5 11h0M7.5 14h0M13 9h0M13 12h0M13 15h0"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5zM3 7l9 5 9-5M12 12v10"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></symbol>
+  <symbol id="i-size" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-blender" viewBox="0 0 24 24"><circle cx="14" cy="13" r="6"/><circle cx="14" cy="13" r="2"/><path d="M8 13H3M9.5 8.5 5 5"/></symbol>
+</svg>
+
+<div class="picker">
+  <b>案</b>
+  <div class="seg" id="pick-mock">
+    <button data-v="A" aria-pressed="true">A. Material 3</button>
+    <button data-v="B" aria-pressed="false">B. 一問ずつ</button>
+    <button data-v="C" aria-pressed="false">C. Windows 11 風</button>
+  </div>
+  <b>状態</b>
+  <div class="seg" id="pick-state">
+    <button data-v="input" aria-pressed="true">入力中</button>
+    <button data-v="run" aria-pressed="false">作成中</button>
+    <button data-v="done" aria-pressed="false">完了</button>
+  </div>
+</div>
+<p class="note">見た目だけの見本です。ボタンは押しても動きません（B の上の手順だけ切り替わります）。文言と置く要素は今の簡単画面と同じです。</p>
+
+<div class="stage">
+
+<!-- ───── A ───── -->
+<section class="mock on" id="A">
+ <div class="win">
+  <div class="titlebar">PLATEAU → Blender Bridge<span class="sp"></span><i></i><i></i><i></i></div>
+  <div class="body">
+   <div class="hero">
+    <div class="logo"><svg class="ic"><use href="#i-city"/></svg></div>
+    <div><h1>好きな街を3Dにしよう</h1><p>場所と広さを選んで、Blenderで開ける街を作ります。</p></div>
+   </div>
+
+   <div data-show="input">
+    <div class="card">
+     <h2><span class="num">1</span>場所を選ぶ</h2>
+     <p class="sub">有名な場所から選ぶか、Googleマップで探した座標を貼り付けます。</p>
+     <div class="chips">
+      <span class="chip sel"><svg class="ic"><use href="#i-check"/></svg>東京タワー</span>
+      <span class="chip">東京スカイツリー</span><span class="chip">新宿駅西口</span>
+      <span class="chip">渋谷スクランブル交差点</span><span class="chip">東京駅 丸の内</span><span class="chip">富士山 山頂</span>
+     </div>
+     <button class="tonal"><svg class="ic"><use href="#i-map"/></svg>Googleマップで場所を探す</button>
+     <div style="margin-top:16px">
+      <div class="segm"><span class="sel"><svg class="ic" style="width:16px;height:16px"><use href="#i-check"/></svg>中心点</span><span>矩形</span><span>メッシュコード</span></div>
+     </div>
+     <div class="field"><div class="box"><label>中心の 緯度, 経度</label>35.6586, 139.7454</div><button class="text-btn">この場所を確認</button></div>
+     <div class="found"><svg class="ic"><use href="#i-check"/></svg>港区のデータがあります・GML 4件・約38MB</div>
+    </div>
+    <div class="card">
+     <h2><span class="num">2</span>広さを選ぶ</h2>
+     <p class="sub">広いほど時間がかかります。はじめは「標準」がおすすめです。</p>
+     <div class="sizes">
+      <div class="size"><div class="sq" style="width:18px;height:18px"></div><b>小さめ</b>200m</div>
+      <div class="size sel"><div class="sq" style="width:28px;height:28px;background:var(--p)"></div><b>標準</b>400m</div>
+      <div class="size"><div class="sq" style="width:40px;height:40px"></div><b>広め</b>800m</div>
+      <div class="size"><div class="sq" style="width:28px;height:28px;border:2px dashed var(--ol);background:none"></div><b>自分で</b>入力欄の値</div>
+     </div>
+    </div>
+    <div class="card">
+     <h2><span class="num">3</span>保存先</h2>
+     <div class="save" style="margin-left:38px">
+      <svg class="ic"><use href="#i-folder"/></svg>
+      <div class="fn">東京タワー_400m.blend<small>ドキュメント\PLATEAU-Blender-Bridge ・ 同じ名前がある時は別の名前で保存します</small></div>
+      <button class="outlined">変更</button>
+     </div>
+    </div>
+    <button class="fab"><svg class="ic"><use href="#i-cube"/></svg>3Dの街を作る</button>
+   </div>
+
+   <div data-show="run">
+    <div class="prog">
+     <div class="row-end"><h2 style="margin:0;font-size:18px">(3/4) 地形と写真を準備しています…</h2><button class="outlined">中止</button></div>
+     <div class="bar"><i></i></div>
+     <div class="steps4">
+      <span class="fin"><span class="d"><svg class="ic" style="width:12px;height:12px;stroke-width:3"><use href="#i-check"/></svg></span>データを探す</span>
+      <span class="fin"><span class="d"><svg class="ic" style="width:12px;height:12px;stroke-width:3"><use href="#i-check"/></svg></span>建物を準備</span>
+      <span class="cur"><span class="d"></span>地形と写真</span>
+      <span><span class="d"></span>Blenderで保存</span>
+     </div>
+    </div>
+    <p style="color:var(--var);font-size:13px;margin:14px 4px">東京タワー・400m を作っています。数分かかることがあります。このまま待つか、中止できます。</p>
+   </div>
+
+   <div data-show="done">
+    <div class="done">
+     <div class="big"><svg class="ic"><use href="#i-check"/></svg></div>
+     <h2>街ができました！</h2>
+     <div>東京タワー_400m.blend を保存しました。</div>
+     <button class="fab"><svg class="ic"><use href="#i-blender"/></svg>Blenderで街を開く</button>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+     <button class="outlined">保存したフォルダを開く</button><button class="outlined">別の街を作る</button>
+    </div>
+   </div>
+
+   <div class="foot"><span>⚙ 詳細設定・診断</span><span>v0.x ・ データ出典: Project PLATEAU / 国土地理院</span></div>
+  </div>
+ </div>
+</section>
+
+<!-- ───── B ───── -->
+<section class="mock" id="B">
+ <div class="win">
+  <div class="titlebar">PLATEAU → Blender Bridge<span class="sp"></span><i></i><i></i><i></i></div>
+  <div class="body">
+   <div class="stepper" data-show="input">
+    <button data-step="1" class="on"><span class="n">1</span>場所</button><span class="line"></span>
+    <button data-step="2"><span class="n">2</span>広さ</button><span class="line"></span>
+    <button data-step="3"><span class="n">3</span>保存先</button>
+   </div>
+
+   <div data-show="input" class="wz" data-wz="1">
+    <h1 class="q">どこの街を作りますか？</h1>
+    <p class="qs">有名な場所なら、押すだけで決まります。</p>
+    <div class="grid">
+     <div class="pick sel"><svg class="ic"><use href="#i-pin"/></svg>東京タワー<small>港区</small></div>
+     <div class="pick"><svg class="ic"><use href="#i-pin"/></svg>東京スカイツリー<small>墨田区</small></div>
+     <div class="pick"><svg class="ic"><use href="#i-pin"/></svg>渋谷スクランブル交差点<small>渋谷区</small></div>
+     <div class="pick"><svg class="ic"><use href="#i-pin"/></svg>新宿駅西口<small>新宿区</small></div>
+     <div class="pick"><svg class="ic"><use href="#i-pin"/></svg>東京駅 丸の内<small>千代田区</small></div>
+     <div class="pick"><svg class="ic"><use href="#i-pin"/></svg>富士山 山頂<small>静岡県・山梨県</small></div>
+    </div>
+    <div class="or">または</div>
+    <div class="grid"><div class="pick wide"><svg class="ic"><use href="#i-map"/></svg><div>Googleマップで好きな場所を探す<br><small>地図を右クリック → 数字をクリックでコピー → ここに貼り付け</small></div><svg class="ic"><use href="#i-arrow"/></svg></div></div>
+   </div>
+
+   <div data-show="input" class="wz" data-wz="2" hidden>
+    <h1 class="q">どのくらいの広さにしますか？</h1>
+    <p class="qs">広いほど時間がかかります。迷ったら真ん中の「標準」で大丈夫です。</p>
+    <div class="sizes">
+     <div class="pick"><div class="sq" style="width:44px;height:44px"></div><b>小さめ</b><small>200m 四方・すぐできる</small></div>
+     <div class="pick sel"><div class="sq" style="width:70px;height:70px"></div><b>標準</b><small>400m 四方・おすすめ</small></div>
+     <div class="pick"><div class="sq" style="width:96px;height:96px"></div><b>広め</b><small>800m 四方・時間がかかる</small></div>
+    </div>
+   </div>
+
+   <div data-show="input" class="wz" data-wz="3" hidden>
+    <h1 class="q">ここに保存します</h1>
+    <p class="qs">このままで大丈夫です。変えたい時だけ押してください。</p>
+    <div class="file"><svg class="ic"><use href="#i-folder"/></svg><div>東京タワー_400m.blend<small>ドキュメント\PLATEAU-Blender-Bridge</small></div><button class="back" style="border:2px solid var(--line);border-radius:999px;padding:8px 20px">変更</button></div>
+    <p class="qs" style="margin-top:14px;font-size:13px">同じ名前のファイルがある時は、上書きせず別の名前にして保存します。</p>
+   </div>
+
+   <div data-show="run" class="run">
+    <div class="ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="none" stroke="#F0D9D0" stroke-width="3"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="#D9532B" stroke-width="3" stroke-linecap="round" stroke-dasharray="58 100"/></svg><span>3/4</span></div>
+    <p class="stage-txt">地形と写真を準備しています…</p>
+    <p>東京タワー・400m を作っています。数分かかることがあります。</p>
+    <button class="cancel">中止する</button>
+   </div>
+
+   <div data-show="done" class="party">
+    <div class="cube"><svg class="ic"><use href="#i-cube"/></svg></div>
+    <h1 class="q">街ができました！</h1>
+    <p class="qs">東京タワー_400m.blend を保存しました。</p>
+    <button class="next"><svg class="ic"><use href="#i-blender"/></svg>Blenderで街を開く</button>
+    <div class="where"><span class="more">保存したフォルダを開く</span>　・　<span class="more">別の街を作る</span></div>
+   </div>
+
+   <div class="spacer"></div>
+   <div class="nav" data-show="input">
+    <button class="back">← 戻る</button>
+    <span class="more">詳細設定</span>
+    <button class="next" id="b-next">次へ<svg class="ic"><use href="#i-arrow"/></svg></button>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ───── C ───── -->
+<section class="mock" id="C">
+ <div class="win">
+  <div class="titlebar"><span class="appic"></span>PLATEAU → Blender Bridge<span class="sp"></span><i></i><i></i><i></i></div>
+  <div class="layout">
+   <nav>
+    <a class="sel" href="#"><svg class="ic"><use href="#i-city"/></svg>街を作る</a>
+    <a href="#"><svg class="ic"><use href="#i-folder"/></svg>作った街</a>
+    <hr>
+    <a href="#"><svg class="ic"><use href="#i-gear"/></svg>詳細設定</a>
+    <a href="#"><svg class="ic"><use href="#i-log"/></svg>ログ<span class="tag">診断</span></a>
+   </nav>
+   <main>
+    <h1>好きな街を3Dにしよう</h1>
+    <p class="lead">場所と広さを選んで、Blenderで開ける街を作ります。</p>
+
+    <div data-show="input">
+     <div class="grp">① 場所</div>
+     <div class="rowc"><svg class="ic"><use href="#i-pin"/></svg><div class="t">有名な場所から選ぶ<small>選ぶと下の座標が入ります</small></div><div class="combo">東京タワー<span>⌄</span></div></div>
+     <div class="rowc"><svg class="ic"><use href="#i-map"/></svg><div class="t">Googleマップで探す<small>地図を右クリック → 数字をクリックでコピー → 下に貼り付け</small></div><button class="btn">マップを開く ↗</button></div>
+     <div class="rowc"><svg class="ic"><use href="#i-size"/></svg><div class="t">指定のしかた</div><div class="radios"><span><i class="rd sel"></i>中心点</span><span><i class="rd"></i>矩形</span><span><i class="rd"></i>メッシュコード</span></div></div>
+     <div class="rowc"><span style="width:22px"></span><div class="t">中心の 緯度, 経度</div><div class="input">35.6586, 139.7454</div><button class="btn">確認</button></div>
+     <div class="info"><svg class="ic"><use href="#i-check"/></svg>港区のデータがあります・GML 4件・約38MB</div>
+
+     <div class="grp">② 広さ</div>
+     <div class="rowc"><svg class="ic"><use href="#i-size"/></svg><div class="t">一辺の長さ<small>広いほど時間がかかります</small></div><div class="radios"><span><i class="rd"></i>200m</span><span><i class="rd sel"></i>400m</span><span><i class="rd"></i>800m</span><span><i class="rd"></i>入力欄</span></div></div>
+
+     <div class="grp">③ 保存先</div>
+     <div class="rowc"><svg class="ic"><use href="#i-folder"/></svg><div class="t">東京タワー_400m.blend<small>ドキュメント\PLATEAU-Blender-Bridge ・ 同じ名前がある時は別の名前で保存</small></div><button class="btn">変更</button></div>
+
+     <div class="bar"><span class="hint">準備ができました</span><button class="btn acc">3Dの街を作る</button></div>
+    </div>
+
+    <div data-show="run">
+     <div class="grp">作成中 — 東京タワー・400m</div>
+     <div class="rowc" style="display:block">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">(3/4) 地形と写真を準備しています…</b><button class="btn">中止</button></div>
+      <div class="pbar"><i></i></div>
+      <ul class="stagelist">
+       <li class="fin"><span class="d"><svg class="ic"><use href="#i-check"/></svg></span>データを探しています</li>
+       <li class="fin"><span class="d"><svg class="ic"><use href="#i-check"/></svg></span>建物を準備しています</li>
+       <li class="cur"><span class="d"></span>地形と写真を準備しています</li>
+       <li><span class="d"></span>Blenderで保存・確認しています</li>
+      </ul>
+     </div>
+    </div>
+
+    <div data-show="done">
+     <div class="ok-banner"><svg class="ic"><use href="#i-check"/></svg><div><b>街ができました</b><br><span style="font-size:13px">東京タワー_400m.blend を保存しました。</span></div></div>
+     <div class="bar" style="justify-content:flex-start"><button class="btn acc">Blenderで街を開く</button><button class="btn">フォルダを開く</button><button class="btn">別の街を作る</button></div>
+    </div>
+
+    <p class="foot">v0.x ・ データ出典: Project PLATEAU / 国土地理院。公開時は利用条件をご確認ください。</p>
+   </main>
+  </div>
+ </div>
+</section>
+</div>
+
+<script>
+function bindSeg(id,apply){
+  const seg=document.getElementById(id);
+  seg.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    apply(b.dataset.v);
+  });
+}
+bindSeg('pick-mock',v=>document.querySelectorAll('.mock').forEach(m=>m.classList.toggle('on',m.id===v)));
+bindSeg('pick-state',v=>document.body.dataset.state=v);
+
+// B: 上の手順と「次へ」で質問を切り替える
+let step=1;
+function showStep(n){
+  step=n;
+  document.querySelectorAll('#B .wz').forEach(w=>w.hidden=Number(w.dataset.wz)!==n);
+  document.querySelectorAll('#B .stepper button').forEach(b=>{
+    const s=Number(b.dataset.step);b.classList.toggle('on',s===n);b.classList.toggle('past',s<n);
+  });
+  document.getElementById('b-next').firstChild.textContent=n===3?'3Dの街を作る':'次へ';
+}
+document.querySelectorAll('#B .stepper button').forEach(b=>b.addEventListener('click',()=>showStep(Number(b.dataset.step))));
+document.getElementById('b-next').addEventListener('click',()=>step<3&&showStep(step+1));
+document.querySelector('#B .back').addEventListener('click',()=>step>1&&showStep(step-1));
+</script>
+</body>
+</html>

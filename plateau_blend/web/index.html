@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLATEAU → Blender Bridge</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5zM3 7l9 5 9-5M12 12v10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-blender" viewBox="0 0 24 24"><circle cx="14" cy="13" r="6"/><circle cx="14" cy="13" r="2"/><path d="M8 13H3M9.5 8.5 5 5"/></symbol>
+</svg>
+
+<div class="win">
+  <div class="body">
+    <div class="stepper" id="stepper">
+      <button type="button" data-step="1" class="on"><span class="n">1</span>場所</button><span class="line"></span>
+      <button type="button" data-step="2"><span class="n">2</span>広さ</button><span class="line"></span>
+      <button type="button" data-step="3"><span class="n">3</span>保存先</button>
+    </div>
+
+    <div class="banner" id="blender-banner" hidden>
+      <b>Blenderが見つかりません</b>
+      <button type="button" class="ghost" id="get-blender">Blenderを入手する（公式サイト）</button>
+      <button type="button" class="ghost" id="rescan">入れたら再スキャン</button>
+    </div>
+
+    <div class="views">
+      <section class="view" id="view-input">
+        <div class="wz" data-wz="1">
+          <h1 class="q">どこの街を作りますか？</h1>
+          <label class="field-label" id="area-label" for="area-input">中心の 緯度, 経度（, 一辺m）</label>
+          <div class="field">
+            <input id="area-input" type="text" autocomplete="off" spellcheck="false" placeholder="35.6586, 139.7454">
+            <button type="button" class="next small" id="check-place">確認</button>
+          </div>
+          <p class="result" id="place-info" role="status" aria-live="polite" hidden></p>
+          <p class="error" id="place-error" role="alert" hidden>場所を選ぶか、座標を入れてください</p>
+          <div class="helpers">
+            <p class="helpers-title">座標が分からない時は</p>
+            <div class="helper-row">
+              <div class="helper">
+                <button type="button" class="helper-btn" id="maps-open">
+                  <svg class="ic"><use href="#i-map"/></svg><span>Googleマップで探す</span><span class="ext">↗</span>
+                </button>
+                <ol class="mini-steps">
+                  <li>地図で場所を右クリック</li>
+                  <li>出てきた数字を押してコピー</li>
+                  <li>上の欄に貼り付け</li>
+                </ol>
+              </div>
+              <div class="helper">
+                <label class="helper-btn select-btn">
+                  <svg class="ic"><use href="#i-pin"/></svg>
+                  <select id="place-select" aria-label="有名な場所から選ぶ">
+                    <option value="">有名な場所から選ぶ</option>
+                  </select>
+                </label>
+                <p class="mini-note">選ぶと、上の欄に座標が入ります</p>
+              </div>
+            </div>
+          </div>
+          <details class="more" id="more-modes">
+            <summary>矩形・メッシュコードで指定する</summary>
+            <div class="modes" id="modes" role="radiogroup" aria-label="指定のしかた">
+              <button type="button" role="radio" data-mode="center" aria-checked="true">中心点</button>
+              <button type="button" role="radio" data-mode="bbox" aria-checked="false">矩形</button>
+              <button type="button" role="radio" data-mode="mesh" aria-checked="false">メッシュコード</button>
+            </div>
+            <p class="hint" id="area-hint"></p>
+          </details>
+        </div>
+
+        <div class="wz" data-wz="2" hidden>
+          <h1 class="q" id="size-question">どのくらいの広さにしますか？</h1>
+          <p class="qs" id="size-lead">広いほど時間がかかります。迷ったら真ん中の「標準」で大丈夫です。</p>
+          <div class="sizes" id="sizes" role="radiogroup" aria-label="広さ"></div>
+          <p class="note-box" id="size-fixed" hidden>広さは入力した範囲で決まります。</p>
+        </div>
+
+        <div class="wz" data-wz="3" hidden>
+          <h1 class="q">ここに保存します</h1>
+          <div class="saveloc" id="saveloc" role="radiogroup" aria-label="保存場所">
+            <button type="button" role="radio" data-kind="documents" aria-checked="true">ドキュメント</button>
+            <button type="button" role="radio" data-kind="app" aria-checked="false">アプリのフォルダ</button>
+            <button type="button" role="radio" data-kind="other" aria-checked="false">その他…</button>
+          </div>
+          <div class="file">
+            <div class="fname" id="output-name" title="">scene.blend</div>
+            <div class="ffolder" id="output-folder" title=""></div>
+            <button type="button" class="ghost" id="choose-output">変更</button>
+          </div>
+          <dl class="summary">
+            <dt>場所</dt><dd id="summary-place" title="">—</dd>
+            <dt>広さ</dt><dd id="summary-area" title="">—</dd>
+          </dl>
+          <p class="hint" id="rename-note" hidden></p>
+          <p class="error" id="start-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <section class="view run" id="view-run" hidden>
+        <div class="ring">
+          <svg viewBox="0 0 36 36" aria-hidden="true">
+            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#F0D9D0" stroke-width="3"/>
+            <circle id="ring-progress" cx="18" cy="18" r="15.5" fill="none" stroke="#D9532B"
+                    stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="25 100"/>
+          </svg>
+          <span id="ring-label">1/4</span>
+        </div>
+        <p class="stage-txt" id="stage-text">データを探しています…</p>
+        <p id="run-summary">—</p>
+        <div class="run-actions">
+          <button type="button" class="cancel" id="btn-cancel">中止する</button>
+          <button type="button" class="linkbtn" id="btn-run-log">くわしく見る</button>
+        </div>
+      </section>
+
+      <section class="view party" id="view-done" hidden>
+        <div class="cube"><svg class="ic"><use href="#i-cube"/></svg></div>
+        <h1 class="q">街ができました！</h1>
+        <p class="done-name" id="done-name" title="">—</p>
+        <p class="done-folder" id="done-folder" title=""></p>
+        <button type="button" class="next" id="btn-open-result">
+          <svg class="ic"><use href="#i-blender"/></svg>Blenderで街を開く
+        </button>
+        <div class="where">
+          <button type="button" class="linkbtn" id="btn-open-folder">保存したフォルダを開く</button>
+          　・　
+          <button type="button" class="linkbtn" id="btn-again">別の街を作る</button>
+        </div>
+      </section>
+
+      <section class="view message" id="view-cancelled" hidden>
+        <div class="badge neutral">■</div>
+        <h1 class="q">中止しました</h1>
+        <p class="qs" id="cancelled-text"></p>
+        <div class="message-actions">
+          <button type="button" class="next" id="btn-retry-cancelled">もう一度作る</button>
+          <button type="button" class="linkbtn" data-open-log>くわしく見る</button>
+        </div>
+      </section>
+
+      <section class="view message" id="view-failed" hidden>
+        <div class="badge bad">✗</div>
+        <h1 class="q" id="failed-title">作れませんでした</h1>
+        <p class="qs" id="failed-text"></p>
+        <div class="message-actions">
+          <button type="button" class="next" id="btn-retry-failed">もう一度作る</button>
+          <button type="button" class="linkbtn" data-open-log>くわしく見る</button>
+          <button type="button" class="linkbtn" id="btn-save-log">ログを保存</button>
+        </div>
+      </section>
+
+      <section class="view advanced" id="view-advanced" hidden>
+        <div class="adv-head">
+          <h1 class="q">詳細設定</h1>
+          <button type="button" class="back" id="btn-adv-back">← 戻る</button>
+        </div>
+        <div class="adv-grid">
+          <label for="adv-output">保存先（フルパス）</label>
+          <div class="row">
+            <input id="adv-output" type="text" autocomplete="off" spellcheck="false">
+            <button type="button" class="ghost" id="adv-output-browse">参照</button>
+          </div>
+          <label for="adv-blender">Blender本体</label>
+          <div class="row">
+            <input id="adv-blender" type="text" autocomplete="off" spellcheck="false">
+            <button type="button" class="ghost" id="adv-blender-browse">参照</button>
+          </div>
+          <label for="adv-nusamai">nusamai CLI</label>
+          <div class="row">
+            <input id="adv-nusamai" type="text" autocomplete="off" spellcheck="false">
+            <button type="button" class="ghost" id="adv-nusamai-browse">参照</button>
+          </div>
+          <label for="adv-epsg">EPSG</label>
+          <input id="adv-epsg" type="text" autocomplete="off" spellcheck="false">
+          <label for="adv-lod">建物LOD</label>
+          <select id="adv-lod">
+            <option value="min_lod">min_lod</option>
+            <option value="max_lod">max_lod</option>
+            <option value="textured_max_lod" selected>textured_max_lod</option>
+          </select>
+          <label for="adv-zoom">航空写真ズーム</label>
+          <select id="adv-zoom">
+            <option value="14">14</option><option value="15">15</option>
+            <option value="16">16</option><option value="17">17</option>
+            <option value="18" selected>18</option>
+          </select>
+          <label for="adv-dem">地形のサンプル密度</label>
+          <select id="adv-dem">
+            <option value="40">40</option><option value="60">60</option>
+            <option value="100" selected>100</option><option value="160">160</option>
+            <option value="256">256</option>
+          </select>
+          <label for="adv-axis">OBJ座標軸</label>
+          <select id="adv-axis">
+            <option value="auto" selected>auto</option>
+            <option value="xyz">xyz</option>
+            <option value="yxz">yxz</option>
+          </select>
+          <span></span>
+          <label class="check"><input type="checkbox" id="adv-clip" checked> 矩形範囲で建物を切り出す</label>
+        </div>
+        <div class="adv-actions">
+          <button type="button" class="ghost" id="adv-preview">取得対象の確認</button>
+          <button type="button" class="ghost" id="adv-diagnose">環境診断</button>
+          <button type="button" class="ghost" id="adv-smoke">Blender自己診断</button>
+          <button type="button" class="ghost" id="adv-manual">手動OBJモード</button>
+          <button type="button" class="ghost" id="adv-rescan">Blender / CLIを再スキャン</button>
+        </div>
+        <div class="log-head">
+          <span>ログ</span>
+          <span>
+            <button type="button" class="linkbtn" id="adv-save-log">ログを保存</button>
+            　・　
+            <button type="button" class="linkbtn" id="adv-copy-log">ログをコピー</button>
+          </span>
+        </div>
+        <textarea id="adv-log" class="log" readonly aria-label="ログ"></textarea>
+        <p class="foot">PLATEAU → Blender Bridge <span id="foot-version"></span>　データ出典: Project PLATEAU / 国土地理院。公開時は利用条件をご確認ください。</p>
+      </section>
+    </div>
+
+    <div class="nav" id="nav">
+      <button type="button" class="back" id="btn-back">← 戻る</button>
+      <button type="button" class="linkbtn" id="btn-advanced">詳細設定</button>
+      <button type="button" class="next" id="btn-next"><span id="next-label">次へ</span> <svg class="ic"><use href="#i-arrow"/></svg></button>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

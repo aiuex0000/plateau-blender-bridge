@@ -7,6 +7,7 @@ root = Path(SPECPATH).resolve().parent
 app_dir = root / 'plateau_blend'
 datas = [(str(app_dir / f), 'plateau_blend')
          for f in ('blender_scene.py', 'blender_verify.py')]
+datas += [(str(app_dir / 'web'), 'plateau_blend/web')]
 datas += collect_data_files('pyproj')
 binaries = collect_dynamic_libs('pyproj')
 
@@ -15,8 +16,8 @@ a = Analysis(
     pathex=[str(root)],
     binaries=binaries,
     datas=datas,
-    hiddenimports=['plateau_blend.gui','plateau_blend.auto_gui',
-                   'plateau_blend.auto_cli','pyproj.datadir'],
+    hiddenimports=['plateau_blend.gui','plateau_blend.auto_gui','plateau_blend.web_gui',
+                   'plateau_blend.auto_cli','webview','pyproj.datadir'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False,
 )
