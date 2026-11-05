@@ -1,5 +1,7 @@
 # GUI v2 仕様：一問ずつのウィザード（B案）
 
+> 2026-11-05：描画を pywebview から「ローカルHTTP＋Edgeアプリ窓」へ載せ替えた（ZIP の Mark of the Web で .NET の DLL 読込が止まり、Tk へ落ちたため）。下の pywebview に関する記述は当時の記録。今の形は `docs/gui_edge_app_2026-11-05.md`。
+
 2026-10-30。見た目の土台は `docs/gui_v2_directions/directions.html` の B案（マスター決定）。画面の文言と置く要素は今の簡単画面（`plateau_blend/auto_gui.py`）と同じにし、エンジン（`auto.py` など）には触らない。
 
 ## 決めたこと

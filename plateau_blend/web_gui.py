@@ -1,7 +1,8 @@
-"""B案（一問ずつ）の画面。pywebview の窓と、手書き HTML/JS から呼ばれる Python 側。
+"""B案（一問ずつ）の画面。ローカルHTTP＋Edgeアプリ窓と、手書き HTML/JS から呼ばれる Python 側。
 
-このモジュール自身は tkinter も webview も import しない。Tk の文言・純粋な補助関数は
-``auto_gui`` が正本なので初回利用時に読み込み、pywebview は ``main()`` の中だけで import する。
+モジュール読込時には tkinter も webview も import しない。Tk の文言・純粋な補助関数は
+``auto_gui`` が正本なので初回利用時に読み込み、ファイル選択の Tk は実際に開く時だけ読む。
+画面は ``web_server.BridgeServer`` が 127.0.0.1 で配り、HTTP ハンドラーから ``BridgeApi`` を呼ぶ。
 
 イベントは ``{"kind": ..., "data": ...}``。作業に紐づく ``stage`` / ``result`` / ``done`` /
 ``error`` / ``cancelled`` には ``job_id`` を添える。JS は自分の ``job_id`` 以外のイベントで
@@ -17,9 +18,13 @@ import re
 import subprocess
 import sys
 import threading
+import time
+import traceback
 import unicodedata
 import webbrowser
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .auto import (AutoRequest, _is_lat, _is_lon, center_condition, generate, preview,
                    projected_selection)
@@ -29,6 +34,7 @@ from .discovery import blender_candidates, find_nusamai
 from .resources import enforce_budget, forecast
 from .runtime import CancelToken, CancelledError, hidden_process_kwargs
 from .smoke import run_smoke
+from .web_server import BridgeServer
 from . import __version__
 
 MAPS_URL = 'https://www.google.com/maps'
@@ -39,6 +45,31 @@ _NUM = re.compile(r'-?\d+(?:\.\d+)?')
 _MAP_POINT = re.compile(r'@-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?')
 _DMS = re.compile(r'(\d+)\s*°\s*(\d+)\s*[\'′]\s*(\d+(?:\.\d+)?)\s*(?:"|″|\'\')?\s*([NSEW])')
 _GUI = None
+
+FIRST_CONTACT_TIMEOUT = 60.0
+IDLE_TIMEOUT = 180.0  # 最小化中の Edge はタイマーを1分1回まで間引くので短くしない
+BYE_GRACE = 3.0
+_EDGE_RELATIVE = Path('Microsoft') / 'Edge' / 'Application' / 'msedge.exe'
+
+
+def _fallback_dir() -> Path:
+    base = os.getenv('LOCALAPPDATA') or str(Path.home())
+    return Path(base) / 'PLATEAU-Blender-Bridge' / 'logs'
+
+
+def write_fallback_log(reason, trace=None) -> Path | None:
+    """Tk へ落ちた理由を残す。書けなくても例外を出さない。"""
+    try:
+        folder = _fallback_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / f'gui-fallback-{datetime.now():%Y%m%d-%H%M%S}.log'
+        text = str(reason)
+        if trace:
+            text += '\n\n' + str(trace)
+        target.write_text(text + '\n', encoding='utf-8')
+        return target
+    except Exception:
+        return None
 
 
 def _gui():
@@ -67,7 +98,7 @@ def _path_or_none(value) -> Path | None:
 
 
 def _first_path(result) -> str | None:
-    """pywebview の file dialog は SAVE で文字列、OPEN で tuple を返す。どちらも受ける。"""
+    """ファイル選択の戻り値（文字列・tuple・None）を1本のパスへ揃える。"""
     if not result:
         return None
     if isinstance(result, (list, tuple)):
@@ -259,15 +290,14 @@ def _japan_point(lat, lon) -> tuple[float, float] | None:
 
 
 class BridgeApi:
-    """JS から ``window.pywebview.api.<名前>(...)`` で呼ばれる面。
+    """JS から ``POST /api/<名前>`` で呼ばれる面。
 
-    pywebview は ``_`` で始まらない属性とメソッドを JS へ見せるので、窓・キュー・
-    スレッド・CancelToken はすべて ``_`` 付きで持つ。
+    HTTP 側は ``_`` で始まらない、クラスに定義された呼び出し可能メソッドだけを公開する。
+    キュー・スレッド・CancelToken・ダイアログはすべて ``_`` 付きで持つ。
     """
 
     def __init__(self):
-        self._window = None
-        self._file_dialog = None
+        self._dialogs: Any = None  # save()/open() を持つ物（実体は _TkDialogs、テストでは偽物）
         self._events: queue.Queue = queue.Queue()
         self._threads: list[threading.Thread] = []
         self._lock = threading.Lock()
@@ -560,16 +590,15 @@ class BridgeApi:
     # ── ファイル窓とURL ─────────────────────────────────────────────
 
     def choose_output(self, current: str | None = None) -> str | None:
-        window, dialog = self._window, self._file_dialog
-        if window is None or dialog is None:
+        dialogs = self._dialogs
+        if dialogs is None:
             return None
         target = Path(str(current or self._form.get('output') or _default_output()))
         try:
-            result = window.create_file_dialog(
-                dialog.SAVE,
-                directory=_existing_dir(target.parent),
-                save_filename=target.name or 'scene.blend',
-                file_types=('Blender (*.blend)', 'すべてのファイル (*.*)'),
+            result = dialogs.save(
+                _existing_dir(target.parent),
+                target.name or 'scene.blend',
+                [('Blender (*.blend)', '*.blend'), ('すべてのファイル (*.*)', '*.*')],
             )
         except Exception as exc:
             self._log(f'保存先を選べませんでした: {exc}')
@@ -584,15 +613,13 @@ class BridgeApi:
     def choose_file(self, kind: str | None = None) -> str | None:
         if kind not in ('blender', 'nusamai'):
             return None
-        window, dialog = self._window, self._file_dialog
-        if window is None or dialog is None:
+        dialogs = self._dialogs
+        if dialogs is None:
             return None
         try:
-            result = window.create_file_dialog(
-                dialog.OPEN,
-                directory=_existing_dir(Path.home()),
-                allow_multiple=False,
-                file_types=('Windows executable (*.exe)', 'すべてのファイル (*.*)'),
+            result = dialogs.open(
+                _existing_dir(Path.home()),
+                [('Windows executable (*.exe)', '*.exe'), ('すべてのファイル (*.*)', '*.*')],
             )
         except Exception as exc:
             self._log(f'ファイルを選べませんでした: {exc}')
@@ -744,15 +771,14 @@ class BridgeApi:
     def save_log(self, path: str | None = None) -> str | None:
         text = self.log_text()
         if not path:
-            window, dialog = self._window, self._file_dialog
-            if window is None or dialog is None:
+            dialogs = self._dialogs
+            if dialogs is None:
                 return None
             try:
-                result = window.create_file_dialog(
-                    dialog.SAVE,
-                    directory=_existing_dir(Path(str(self._form.get('output') or _default_output())).expanduser().parent),
-                    save_filename='plateau_bridge_log.txt',
-                    file_types=('テキスト (*.txt)', 'すべてのファイル (*.*)'),
+                result = dialogs.save(
+                    _existing_dir(Path(str(self._form.get('output') or _default_output())).expanduser().parent),
+                    'plateau_bridge_log.txt',
+                    [('テキスト (*.txt)', '*.txt'), ('すべてのファイル (*.*)', '*.*')],
                 )
             except Exception as exc:
                 self._log(f'ログの保存先を選べませんでした: {exc}')
@@ -869,35 +895,229 @@ def _window_size() -> tuple[int, int]:
     return width, height
 
 
+class _TkDialogs:
+    """pywebview の ``create_file_dialog`` の代わり。
+
+    HTTP ハンドラーのスレッドは依頼をキューへ入れ、メインスレッドの待ちループ
+    （``serve_one``）が Tk を開いて結果を返す。Tk はメインスレッド以外で触らない。
+    """
+
+    def __init__(self):
+        self._requests: queue.Queue = queue.Queue()
+
+    def save(self, directory: str, filename: str, file_types: list[tuple[str, str]]) -> str | None:
+        return self._ask(('save', directory, filename, file_types))
+
+    def open(self, directory: str, file_types: list[tuple[str, str]]) -> str | None:
+        return self._ask(('open', directory, file_types))
+
+    def serve_one(self) -> bool:
+        """メインスレッドから呼ぶ。依頼があれば1件だけ実行する。"""
+        try:
+            request, box = self._requests.get_nowait()
+        except queue.Empty:
+            return False
+        try:
+            box['result'] = self._run(request)
+        except Exception as exc:
+            box['error'] = exc
+        finally:
+            box['event'].set()
+        return True
+
+    def _ask(self, request):
+        box = {'event': threading.Event(), 'result': None, 'error': None}
+        self._requests.put((request, box))
+        if not box['event'].wait(300):
+            return None
+        if box['error'] is not None:
+            raise box['error']
+        return box['result']
+
+    @staticmethod
+    def _run(request):
+        # tkinter はここでだけ読む（モジュール読込時に Tk を要求しない）。
+        from tkinter import Tk, filedialog
+        kind = request[0]
+        root = Tk()
+        try:
+            root.withdraw()
+            root.attributes('-topmost', True)
+            root.update()
+            if kind == 'save':
+                _, directory, filename, file_types = request
+                path = filedialog.asksaveasfilename(
+                    parent=root, initialdir=directory, initialfile=filename,
+                    filetypes=list(file_types))
+            else:
+                _, directory, file_types = request
+                path = filedialog.askopenfilename(
+                    parent=root, initialdir=directory, filetypes=list(file_types))
+            return str(path) if path else None
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+
+def _edge_candidates(environment=None) -> list[Path]:
+    env = os.environ if environment is None else environment
+    candidates = []
+    for name in ('ProgramFiles(x86)', 'ProgramFiles'):
+        base = str(env.get(name) or '').strip()
+        if base:
+            candidates.append(Path(base) / _EDGE_RELATIVE)
+    return candidates
+
+
+def _registry_edge() -> Path | None:
+    try:
+        import winreg
+        key_path = r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe'
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+            value, _ = winreg.QueryValueEx(key, '')
+        path = Path(str(value).strip().strip('"'))
+        return path if path.is_file() else None
+    except Exception:
+        return None
+
+
+def _find_edge(environment=None, registry_lookup=None) -> Path | None:
+    """Edge の msedge.exe を探す。レジストリは読むだけ。"""
+    for candidate in _edge_candidates(environment):
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    lookup = _registry_edge if registry_lookup is None else registry_lookup
+    try:
+        return lookup()
+    except Exception:
+        return None
+
+
+def _edge_profile() -> Path:
+    base = os.getenv('LOCALAPPDATA') or str(Path.home())
+    return Path(base) / 'PLATEAU-Blender-Bridge' / 'edge-profile'
+
+
+def _launch_edge(edge: Path, url: str, width: int, height: int):
+    profile = _edge_profile()
+    try:
+        profile.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return subprocess.Popen([
+        str(edge),
+        f'--app={url}',
+        f'--user-data-dir={profile}',
+        '--no-first-run',
+        '--no-default-browser-check',
+        f'--window-size={width},{height}',
+    ])
+
+
+def _open_browser(url: str) -> bool:
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def _session_outcome(now, started_at, last_contact, *, process=None, process_alive=True,
+                     bye_at=None, first_timeout=FIRST_CONTACT_TIMEOUT,
+                     idle_timeout=IDLE_TIMEOUT, bye_grace=BYE_GRACE) -> str:
+    """今の状態から次の判断を返す。``wait`` / ``opened`` / ``closed`` / ``failed``。
+
+    主な終わりの合図は画面の pagehide から届く ``_bye``。届いた後 ``bye_grace`` 秒
+    連絡が戻らなければ閉じた、戻れば再読込とみなす。Edge は起動した msedge.exe が
+    本体を起動し直してすぐ終わることが多いので、プロセスの生死は「生きている間は
+    終わっていない」と「連絡の後に終わった」だけに使う。心拍の途切れは最後の保険。
+    """
+    if last_contact is None:
+        if process is not None and not process_alive:
+            return 'failed'
+        return 'failed' if now - started_at >= first_timeout else 'wait'
+    if process is not None and not process_alive:
+        return 'opened'
+    if bye_at is not None and bye_at >= last_contact and now - bye_at >= bye_grace:
+        return 'closed'
+    if now - last_contact >= idle_timeout:
+        return 'closed'
+    return 'wait'
+
+
 def main() -> bool:
-    """窓を開く。開けなければ例外を出さずに False を返し、呼び手が Tk へ切り替える。"""
+    """画面を開く。開けなければ理由を残して False を返し、呼び手が Tk へ切り替える。"""
     index = _index_path()
     if not index.is_file():
+        write_fallback_log(f'画面ファイルが見つかりません: {index}', traceback.format_exc())
         return False
-    try:
-        import webview
-    except Exception:
-        return False
+
     api = BridgeApi()
-    width, height = _window_size()
+    dialogs = _TkDialogs()
+    api._dialogs = dialogs
+    server = BridgeServer(api, web_dir=index.parent)
     try:
-        window = webview.create_window(
-            f'PLATEAU → Blender | 自動生成 v{__version__.rsplit(".", 1)[0]}',
-            url=str(index),
-            js_api=api,
-            width=width,
-            height=height,
-            min_size=(730, 580),
-            background_color='#FFF8F5',
-        )
-        api._window = window
-        api._file_dialog = webview.FileDialog
-        webview.start()
-    except Exception:
-        api._window = None
-        api._file_dialog = None
+        url = server.start()
+    except Exception as exc:
+        write_fallback_log(f'ローカルHTTPサーバーを起動できませんでした: {type(exc).__name__}: {exc}',
+                           traceback.format_exc())
         return False
-    return True
+
+    process = None
+    started = time.monotonic()
+    opened = False
+    try:
+        edge = _find_edge()
+        width, height = _window_size()
+        if edge is not None:
+            try:
+                process = _launch_edge(edge, url, width, height)
+            except Exception:
+                process = None
+        if process is None and not _open_browser(url):
+            write_fallback_log(f'Edgeもブラウザも開けませんでした: {url}', traceback.format_exc())
+            return False
+
+        while True:
+            dialogs.serve_one()
+            now = time.monotonic()
+            last = server.last_contact
+            if last is not None:
+                opened = True
+            alive = process is not None and process.poll() is None
+            if process is not None and not alive and last is None:
+                # 同じプロファイルの Edge が既に開いていると、起動した msedge.exe は
+                # そちらへ引き渡してすぐ終わる。窓は開くので、以後は心拍で見守る。
+                process = None
+            outcome = _session_outcome(now, started, last, process=process, process_alive=alive,
+                                       bye_at=server.bye_at)
+            if outcome == 'failed':
+                write_fallback_log('画面から最初の連絡が60秒以内に来ませんでした',
+                                   traceback.format_exc())
+                if process is not None and process.poll() is None:
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+                return False
+            if outcome in ('opened', 'closed'):
+                break
+            time.sleep(0.2)
+    except Exception as exc:
+        write_fallback_log(f'{type(exc).__name__}: {exc}', traceback.format_exc())
+        return False
+    finally:
+        try:
+            if api.running:
+                api.cancel()
+        except Exception:
+            pass
+        server.stop()
+    return opened
 
 
 if __name__ == '__main__':

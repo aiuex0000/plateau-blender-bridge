@@ -1,10 +1,11 @@
 'use strict';
 
 /* PLATEAU → Blender Bridge / GUI v2.1（B案: 一問ずつ）
-   Python 側は window.pywebview.api。押し込みはせず、poll() が返ってから次を予約する。
+   Python 側はローカルHTTPの POST /api/<名前>。押し込みはせず、poll() が返ってから次を予約する。
    作業に紐づくイベントは job_id で選別し、今の作業以外では画面の状態を変えない。 */
 
 const JOB_KINDS = ['stage', 'result', 'done', 'error', 'cancelled'];
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
 
 const state = {
   api: null,
@@ -43,17 +44,48 @@ const SIZE_PX = { '200': 40, '400': 62, '800': 86 };
 
 /* ── 起動 ─────────────────────────────────────────────────────── */
 
-window.addEventListener('pywebviewready', start);
-if (window.pywebview && window.pywebview.api) start();
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', start, { once: true });
+} else {
+  start();
+}
 window.addEventListener('beforeunload', () => { state.closed = true; });
+/* 窓を閉じる・再読込する時の合図。Python 側は3秒待って連絡が戻らなければ終わる。 */
+window.addEventListener('pagehide', () => {
+  try {
+    fetch('/api/_bye', { method: 'POST', keepalive: true, headers: { 'X-Bridge-Token': TOKEN } });
+  } catch (error) { /* 閉じる途中なので何もしない */ }
+});
+
+function makeApi() {
+  return new Proxy({}, {
+    get(_target, name) {
+      if (typeof name !== 'string') return undefined;
+      return (...args) => callApi(name, args);
+    }
+  });
+}
+
+async function callApi(name, args) {
+  const response = await fetch('/api/' + name, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': TOKEN },
+    body: JSON.stringify({ args })
+  });
+  let payload = null;
+  try { payload = await response.json(); } catch (error) { payload = null; }
+  if (payload && payload.ok) return payload.result;
+  throw new Error((payload && payload.error) || ('HTTP ' + response.status));
+}
 
 async function start() {
   if (state.ready) return;
   state.ready = true;
-  state.api = window.pywebview.api;
+  state.api = makeApi();
   try {
     const meta = await state.api.initial_state();
     if (meta && typeof meta === 'object') state.meta = Object.assign(state.meta, meta);
+    if (state.meta.title) document.title = state.meta.title;
   } catch (error) {
     console.error('initial_state failed', error);
   }

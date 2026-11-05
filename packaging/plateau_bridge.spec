@@ -17,7 +17,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=['plateau_blend.gui','plateau_blend.auto_gui','plateau_blend.web_gui',
-                   'plateau_blend.auto_cli','webview','pyproj.datadir'],
+                   'plateau_blend.auto_cli','plateau_blend.web_server','pyproj.datadir'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False,
 )

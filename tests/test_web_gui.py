@@ -453,5 +453,143 @@ class SmokeTestTests(BridgeTestCase):
         self.assertFalse(api.running)
 
 
+class FakeDialogs:
+    """tkinter を開かずに、ファイル選択の依頼内容と戻り値だけを差し替える。"""
+
+    def __init__(self, save_result=None, open_result=None):
+        self.save_result = save_result
+        self.open_result = open_result
+        self.save_calls = []
+        self.open_calls = []
+
+    def save(self, directory, filename, file_types):
+        self.save_calls.append((directory, filename, list(file_types)))
+        return self.save_result
+
+    def open(self, directory, file_types):
+        self.open_calls.append((directory, list(file_types)))
+        return self.open_result
+
+
+class DialogTests(BridgeTestCase):
+    def test_choose_output_appends_blend_and_opens_the_current_folder(self):
+        api = BridgeApi()
+        dialogs = FakeDialogs(save_result=str(Path(self._tmp.name) / 'chosen'))
+        api._dialogs = dialogs
+
+        picked = api.choose_output(str(self.output))
+
+        self.assertEqual(picked, str(Path(self._tmp.name) / 'chosen') + '.blend')
+        directory, filename, file_types = dialogs.save_calls[0]
+        self.assertEqual(Path(directory), self.output.parent)
+        self.assertEqual(filename, 'scene.blend')
+        self.assertIn(('Blender (*.blend)', '*.blend'), file_types)
+
+    def test_choose_output_keeps_an_existing_blend_extension(self):
+        api = BridgeApi()
+        api._dialogs = FakeDialogs(save_result=str(self.output))
+        self.assertEqual(api.choose_output(), str(self.output))
+
+    def test_choose_file_uses_the_open_dialog_for_both_kinds(self):
+        api = BridgeApi()
+        path = str(Path(self._tmp.name) / 'blender.exe')
+        dialogs = FakeDialogs(open_result=path)
+        api._dialogs = dialogs
+
+        self.assertEqual(api.choose_file('blender'), path)
+        self.assertEqual(api.choose_file('nusamai'), path)
+        self.assertIsNone(api.choose_file('other'))
+        self.assertEqual(len(dialogs.open_calls), 2)
+        self.assertIn(('Windows executable (*.exe)', '*.exe'), dialogs.open_calls[0][1])
+
+    def test_save_log_writes_the_chosen_file(self):
+        api = BridgeApi()
+        target = Path(self._tmp.name) / 'bridge-log.txt'
+        dialogs = FakeDialogs(save_result=str(target))
+        api._dialogs = dialogs
+        api._log('保存される行')
+
+        self.assertEqual(api.save_log(), str(target))
+        self.assertIn('保存される行', target.read_text(encoding='utf-8'))
+        self.assertEqual(dialogs.save_calls[0][1], 'plateau_bridge_log.txt')
+        self.assertIn(('テキスト (*.txt)', '*.txt'), dialogs.save_calls[0][2])
+
+    def test_without_dialogs_the_selection_paths_return_none(self):
+        api = BridgeApi()
+        self.assertIsNone(api.choose_output(str(self.output)))
+        self.assertIsNone(api.choose_file('blender'))
+        self.assertIsNone(api.save_log())
+
+    def test_a_broken_dialog_is_logged_and_returns_none(self):
+        class Broken(FakeDialogs):
+            def save(self, directory, filename, file_types):
+                raise RuntimeError('窓が開かない')
+
+        api = BridgeApi()
+        api._dialogs = Broken()
+        self.assertIsNone(api.choose_output(str(self.output)))
+        events = api.poll()
+        self.assertTrue(any(event['kind'] == 'log' and '窓が開かない' in event['data']
+                            for event in events))
+
+
+class EdgeAndFallbackTests(BridgeTestCase):
+    def test_find_edge_prefers_the_program_files_candidate(self):
+        edge = Path(self._tmp.name) / 'Microsoft' / 'Edge' / 'Application' / 'msedge.exe'
+        edge.parent.mkdir(parents=True)
+        edge.write_bytes(b'')
+        registry_calls = []
+
+        found = web_gui._find_edge(
+            environment={'ProgramFiles(x86)': '', 'ProgramFiles': self._tmp.name},
+            registry_lookup=lambda: registry_calls.append(True))
+
+        self.assertEqual(found, edge)
+        self.assertEqual(registry_calls, [])
+
+    def test_find_edge_falls_back_to_the_registry(self):
+        fallback = Path(self._tmp.name) / 'reg' / 'msedge.exe'
+        found = web_gui._find_edge(environment={}, registry_lookup=lambda: fallback)
+        self.assertEqual(found, fallback)
+
+    def test_session_outcome_uses_heartbeat_for_browser_and_process_for_edge(self):
+        self.assertEqual(web_gui._session_outcome(10, 0, None), 'wait')
+        self.assertEqual(web_gui._session_outcome(61, 0, None), 'failed')
+        self.assertEqual(web_gui._session_outcome(100, 0, 10), 'wait')
+        self.assertEqual(web_gui._session_outcome(200, 0, 10), 'closed')
+
+        process = object()
+        self.assertEqual(web_gui._session_outcome(
+            100, 0, 10, process=process, process_alive=True), 'wait')
+        # Edge が生きていても心拍が途切れたら閉じる（本体は起動し直した別プロセスのことが多い）
+        self.assertEqual(web_gui._session_outcome(
+            200, 0, 10, process=process, process_alive=True), 'closed')
+        self.assertEqual(web_gui._session_outcome(
+            200, 0, 10, process=process, process_alive=False), 'opened')
+        self.assertEqual(web_gui._session_outcome(
+            200, 0, None, process=process, process_alive=False), 'failed')
+        self.assertEqual(web_gui._session_outcome(
+            61, 0, None, process=process, process_alive=True), 'failed')
+
+    def test_session_outcome_closes_after_bye_unless_contact_returns(self):
+        # 閉じた: 最後の連絡 10 → bye 11 → 3秒戻らない
+        self.assertEqual(web_gui._session_outcome(13, 0, 10, bye_at=11), 'wait')
+        self.assertEqual(web_gui._session_outcome(14.5, 0, 10, bye_at=11), 'closed')
+        # 再読込: bye 11 の後に連絡 12 が戻った
+        self.assertEqual(web_gui._session_outcome(30, 0, 12, bye_at=11), 'wait')
+        # Edge が生きていても bye で閉じる（起動し直しで本体が別プロセスになるため）
+        self.assertEqual(web_gui._session_outcome(
+            14.5, 0, 10, process=object(), process_alive=True, bye_at=11), 'closed')
+
+    def test_fallback_log_is_written_under_the_logs_folder(self):
+        logs = Path(self._tmp.name) / 'logs'
+        with patch.object(web_gui, '_fallback_dir', return_value=logs):
+            written = web_gui.write_fallback_log('理由です', 'traceです')
+        self.assertIsNotNone(written)
+        text = written.read_text(encoding='utf-8')
+        self.assertIn('理由です', text)
+        self.assertIn('traceです', text)
+
+
 if __name__ == '__main__':
     unittest.main()

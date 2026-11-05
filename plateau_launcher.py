@@ -10,27 +10,34 @@ from datetime import datetime
 
 def self_check(destination: Path) -> int:
     """Headless installed-bundle test, safe on Windows CI without a display server."""
+    web_files_found = False
     try:
         from PIL import Image
         from pyproj import Transformer, datadir
         import tkinter as tk
         from plateau_blend import pipeline
         import plateau_blend
+        import plateau_blend.web_server
         module_dir=Path(plateau_blend.__file__).parent
         files=['blender_scene.py','blender_verify.py']
         missing=[f for f in files if not (module_dir/f).is_file()]
+        web_dir=module_dir/'web'
+        web_files_found=all((web_dir/name).is_file() for name in ('index.html','app.js','app.css'))
         coords=Transformer.from_crs(4326,6674,always_xy=True).transform(135.43,34.82)
         tcl_version=tk.Tcl().eval('info patchlevel')
         from plateau_blend.discovery import bundled_nusamai
         nusamai=bundled_nusamai()
-        status={'passed':bool(nusamai) and not missing and all(map(lambda x:abs(x)<1e7,coords)),
+        status={'passed':bool(nusamai) and not missing and web_files_found
+                          and all(map(lambda x:abs(x)<1e7,coords)),
                 'bundled_nusamai':str(nusamai) if nusamai else None,
                 'bundled_blender_scripts':files,'missing_scripts':missing,
+                'web_files_found':web_files_found,
                 'proj_data_found':(Path(datadir.get_data_dir())/'proj.db').is_file(),
                 'image_library':'Pillow','tcl_version':tcl_version,'coordinate_sample':coords}
         status['passed'] = bool(status['passed'] and status['proj_data_found'])
     except BaseException as exc:
-        status={'passed':False,'error':repr(exc),'trace':traceback.format_exc()}
+        status={'passed':False,'web_files_found':web_files_found,
+                'error':repr(exc),'trace':traceback.format_exc()}
     destination.parent.mkdir(parents=True,exist_ok=True)
     destination.write_text(json.dumps(status,ensure_ascii=False,indent=2),encoding='utf-8')
     return 0 if status['passed'] else 1
@@ -50,11 +57,16 @@ def report_crash(error: BaseException) -> None:
 
 
 def _open_web_gui() -> bool:
-    """新しい画面を先に開く。pywebview も WebView2 も無い時は黙って False を返す。"""
+    """新しい画面を先に開く。開けない時は理由を gui-fallback ログへ残して False を返す。"""
     try:
         from plateau_blend.web_gui import main as web_main
         return bool(web_main())
-    except Exception:
+    except Exception as exc:
+        try:
+            from plateau_blend.web_gui import write_fallback_log
+            write_fallback_log(f'{type(exc).__name__}: {exc}', traceback.format_exc())
+        except Exception:
+            pass
         return False
 
 
