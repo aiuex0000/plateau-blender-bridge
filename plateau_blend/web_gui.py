@@ -1003,20 +1003,29 @@ def _edge_profile() -> Path:
     return Path(base) / 'PLATEAU-Blender-Bridge' / 'edge-profile'
 
 
+def _edge_args(edge: Path, url: str, profile: Path, width: int, height: int) -> list[str]:
+    """新しいプロファイルの Edge は Windows のアカウントで自動サインインして同期を始め、
+    利用者の拡張を全部入れる（導入時に案内タブを開く物もある。2026-11-05 実測で約65個）。
+    画面は拡張を使わないので、同期と拡張は止める。"""
+    return [
+        str(edge),
+        f'--app={url}',
+        f'--user-data-dir={profile}',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-sync',
+        '--disable-extensions',
+        f'--window-size={width},{height}',
+    ]
+
+
 def _launch_edge(edge: Path, url: str, width: int, height: int):
     profile = _edge_profile()
     try:
         profile.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
-    return subprocess.Popen([
-        str(edge),
-        f'--app={url}',
-        f'--user-data-dir={profile}',
-        '--no-first-run',
-        '--no-default-browser-check',
-        f'--window-size={width},{height}',
-    ])
+    return subprocess.Popen(_edge_args(edge, url, profile, width, height))
 
 
 def _open_browser(url: str) -> bool:

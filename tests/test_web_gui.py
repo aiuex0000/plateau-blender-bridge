@@ -552,6 +552,16 @@ class EdgeAndFallbackTests(BridgeTestCase):
         found = web_gui._find_edge(environment={}, registry_lookup=lambda: fallback)
         self.assertEqual(found, fallback)
 
+    def test_edge_args_open_an_app_window_without_sync_or_extensions(self):
+        args = web_gui._edge_args(Path('msedge.exe'), 'http://127.0.0.1:1/?t=x',
+                                  Path('prof'), 900, 780)
+        self.assertEqual(args[0], 'msedge.exe')
+        self.assertIn('--app=http://127.0.0.1:1/?t=x', args)
+        self.assertIn(f'--user-data-dir={Path("prof")}', args)
+        self.assertIn('--disable-sync', args)
+        self.assertIn('--disable-extensions', args)
+        self.assertIn('--window-size=900,780', args)
+
     def test_session_outcome_uses_heartbeat_for_browser_and_process_for_edge(self):
         self.assertEqual(web_gui._session_outcome(10, 0, None), 'wait')
         self.assertEqual(web_gui._session_outcome(61, 0, None), 'failed')

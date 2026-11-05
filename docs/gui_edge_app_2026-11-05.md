@@ -42,8 +42,16 @@
 - `dist` へ昇格（旧 `dist` は `dist-old\dist-2026-11-02`）。ZIP を作り直した（42.9MB → 37.5MB、1,088ファイル、最上位は `PLATEAU-Blender-Bridge/`）。
 - 配布先 `app` を入れ替え（旧版は `old\app-prev-2026-11-02`、旧ZIPは `old\PLATEAU-Blender-Bridge-prev-2026-11-02.zip`）。1,088ファイルのハッシュ一致、ZIPも一致。空の `作った街` を作り直した。配布先 self-check 合格（`verification\self-check-2026-11-05-edge-app.json`）、起動で新画面、WM_CLOSE で終了。
 
+## 同期と拡張を止めた（同日、2回目の配布）
+
+- マスターの試験（12:18 起動）の後、専用プロファイルの Edge に普通の閲覧窓が残っていた。調べると、`edge-profile\Default\Extensions` にマスターの拡張が約65個（12:19:26〜12:19:44）入っていた。新しいプロファイルの Edge は Windows のアカウントで自動サインインして同期を始め、拡張を全部入れる。導入時に案内タブを開く拡張があり、その窓が残っていた（マスター「拡張がアップデートで勝手に開くやつ」）。
+- 使い捨てのプロファイルで `--disable-sync --disable-extensions` を付けて100秒観察 → 拡張0個。自動サインインは起きる（`user_name` あり）が、同期しないので中身は入らない。
+- `web_gui._edge_args()` に2つを足した（テスト1件追加、185件成功）。凍結版を `LOCALAPPDATA` を作業領域へ向けたまっさらなプロファイルで90秒観察 → 拡張0個、fallback ログ0件、窓を閉じてアプリと Edge が終了。
+- 昇格（前の `dist` は `dist-old\dist-2026-11-05a`）、ZIP 37.5MB、配布先 `app` 入れ替え（前の版は `old\app-prev-2026-11-05a`）、1,088ファイル一致、self-check 合格（`verification\self-check-2026-11-05-edge-app-nosync.json`）。
+- 注意：同じプロファイルの Edge が既に開いていると、新しい起動は既存のプロセスへ引き渡され、フラグは効かない。K12 の `%LOCALAPPDATA%\PLATEAU-Blender-Bridge\edge-profile` には同期で入った拡張と閲覧が残っている。
+
 ## まだのこと
 
 - 松井さんの PC での確認。
-- 未解明：マスターの試験（12:18 起動）の後、専用プロファイルの Edge に普通の閲覧窓（「個人」、15ページ）が残っていた。アプリの `open_url` は `webbrowser.open` で既定のブラウザへ渡すので、専用プロファイルで開く経路はコード上見当たらない。どう開いたかはマスターに確かめる。
+- K12 の古い `edge-profile` の片付け（マスターの同期データの写しが入っている。消すかはマスターが決める）。
 - `docs/gui_v2_spec.md` の pywebview の節は当時の記録として残し、冒頭に注記を足した。
