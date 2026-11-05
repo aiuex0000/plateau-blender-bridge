@@ -36,9 +36,14 @@
 - 凍結版 `dist-next`：self-check 合格（`web_files_found: true`）。全1,088ファイルに印を付けた写しを `UseShellExecute=false` で起動 → 新画面の窓（題名は `initial_state()` 由来）、fallback ログ0件 → WM_CLOSE で4秒で終了、Edge 0個。
 - 印つきの exe をエクスプローラー経由で開くと「開いているファイル - セキュリティの警告」が出る。これは Windows の確認で、利用者が「実行」を押せば進む（DLL 読込の問題とは別）。
 
+## 配布（同日）
+
+- マスターが `dist-next` の画面でボタンを触って確認（「うまくいった」）。
+- `dist` へ昇格（旧 `dist` は `dist-old\dist-2026-11-02`）。ZIP を作り直した（42.9MB → 37.5MB、1,088ファイル、最上位は `PLATEAU-Blender-Bridge/`）。
+- 配布先 `app` を入れ替え（旧版は `old\app-prev-2026-11-02`、旧ZIPは `old\PLATEAU-Blender-Bridge-prev-2026-11-02.zip`）。1,088ファイルのハッシュ一致、ZIPも一致。空の `作った街` を作り直した。配布先 self-check 合格（`verification\self-check-2026-11-05-edge-app.json`）、起動で新画面、WM_CLOSE で終了。
+
 ## まだのこと
 
-- 新しい形の画面で、ボタンを実際に押す確認（保存先の「変更」＝Tk のファイル選択、作成→完了、ログ保存、詳細設定）。
-- `dist` への昇格、ZIP と配布先 `app` の入れ替え。
 - 松井さんの PC での確認。
+- 未解明：マスターの試験（12:18 起動）の後、専用プロファイルの Edge に普通の閲覧窓（「個人」、15ページ）が残っていた。アプリの `open_url` は `webbrowser.open` で既定のブラウザへ渡すので、専用プロファイルで開く経路はコード上見当たらない。どう開いたかはマスターに確かめる。
 - `docs/gui_v2_spec.md` の pywebview の節は当時の記録として残し、冒頭に注記を足した。
