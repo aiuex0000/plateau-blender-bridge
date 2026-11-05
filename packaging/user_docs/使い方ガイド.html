@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLATEAU → Blender Bridge 使い方ガイド</title>
+<style>
+  :root { --bg:#FFF8F5; --ink:#2B1D17; --sub:#6B574D; --accent:#D9532B; --line:#F0D9D0; --card:#FFFFFF; --ok:#E8F4EC; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:"Yu Gothic UI","Meiryo UI","Segoe UI",sans-serif; line-height:1.8; }
+  main { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:1.9rem; margin:0 0 4px; }
+  .lead { color:var(--sub); margin:0 0 28px; }
+  h2 { font-size:1.35rem; margin:48px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  h3 { font-size:1.08rem; margin:28px 0 8px; }
+  nav { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 20px; }
+  nav ol { margin:0; padding-left:1.4em; }
+  a { color:var(--accent); }
+  figure { margin:16px 0 24px; }
+  figure img { width:100%; max-width:720px; border:1px solid var(--line); border-radius:12px; display:block; }
+  figcaption { color:var(--sub); font-size:.92rem; margin-top:6px; }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:4px 22px 8px; margin:18px 0; }
+  .num { display:inline-flex; align-items:center; justify-content:center; width:1.8em; height:1.8em;
+         border-radius:50%; background:var(--accent); color:#fff; font-weight:700; margin-right:8px; }
+  .note { background:var(--ok); border-radius:12px; padding:10px 16px; }
+  .warn { background:#FFF1E6; border-left:4px solid var(--accent); border-radius:8px; padding:10px 16px; }
+  code, .path { font-family:Consolas,"BIZ UDGothic",monospace; background:#F7ECE7; padding:1px 6px; border-radius:6px; }
+  table { border-collapse:collapse; width:100%; background:var(--card); }
+  th, td { border:1px solid var(--line); padding:8px 12px; text-align:left; vertical-align:top; }
+  th { background:#FBEDE7; white-space:nowrap; }
+  .flow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0 20px; }
+  .flow span { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 12px; }
+  .flow b { color:var(--accent); }
+  footer { color:var(--sub); font-size:.88rem; margin-top:56px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PLATEAU → Blender Bridge 使い方ガイド</h1>
+<p class="lead">場所を選ぶだけで、実在の街を Blender で開ける 3D データにする道具です。</p>
+
+<nav>
+<ol>
+  <li><a href="#what">これは何をする道具？</a></li>
+  <li><a href="#need">用意するもの</a></li>
+  <li><a href="#start">始め方</a></li>
+  <li><a href="#use">使い方（3つの質問）</a></li>
+  <li><a href="#files">できあがったファイル</a></li>
+  <li><a href="#how">しくみ：中で何が起きているか</a></li>
+  <li><a href="#trouble">困った時</a></li>
+  <li><a href="#credit">発表・配布する時の出典</a></li>
+  <li><a href="#cleanup">片付け方</a></li>
+</ol>
+</nav>
+
+<h2 id="what">1. これは何をする道具？</h2>
+<p>場所（緯度・経度）を入れると、次の2つのデータをインターネットから自動で集めて、Blender で開ける 3D の街（<code>.blend</code> ファイル）を作ります。</p>
+<ul>
+  <li><b>建物の形</b> …… 国土交通省「Project PLATEAU」の 3D 都市モデル</li>
+  <li><b>地面の写真と高さ</b> …… 国土地理院の「地理院タイル」（航空写真・標高）</li>
+</ul>
+<p>Python などのプログラムをインストールする必要はありません。</p>
+
+<h2 id="need">2. 用意するもの</h2>
+<table>
+  <tr><th>パソコン</th><td>Windows 10 / 11（64ビット）</td></tr>
+  <tr><th>ブラウザ</th><td>Microsoft Edge（Windows に最初から入っています。画面の表示に使います）</td></tr>
+  <tr><th>Blender</th><td>無料の 3D ソフト。<a href="https://www.blender.org/download/">blender.org</a> から入れます（Blender 5.2 で動作確認）</td></tr>
+  <tr><th>ネット接続</th><td>データを集めるのに使います</td></tr>
+  <tr><th>空き容量</th><td>200m 四方でも作業用に 200MB ほど。広い範囲ほど増えます</td></tr>
+</table>
+
+<h2 id="start">3. 始め方</h2>
+<div class="step">
+  <h3><span class="num">1</span>ZIP を展開する</h3>
+  <p>ZIP を右クリック →「すべて展開」。デスクトップやドキュメントなど、自分で書き込める場所に展開してください。<br>
+  「Program Files」の中には置かないでください。</p>
+</div>
+<div class="step">
+  <h3><span class="num">2</span>exe をダブルクリック</h3>
+  <p>展開したフォルダの <code>PLATEAU-Blender-Bridge.exe</code> をダブルクリックします。</p>
+</div>
+<div class="step">
+  <h3><span class="num">3</span>Windows の確認が出たら</h3>
+  <p>初めて開く時、Windows が確認してくることがあります。配った人が分かっている ZIP なら、次のように進めてください。</p>
+  <ul>
+    <li>「開いているファイル - セキュリティの警告」→「<b>実行</b>」</li>
+    <li>「Windows によって PC が保護されました」→「<b>詳細情報</b>」→「<b>実行</b>」</li>
+  </ul>
+</div>
+
+<h2 id="use">4. 使い方（3つの質問に答えるだけ）</h2>
+
+<h3>質問1：どこの街を作りますか？</h3>
+<figure>
+  <img src="ガイドの画像/01-place-empty.png" alt="最初の画面。どこの街を作りますか？と聞かれている">
+  <figcaption>最初の画面。上の欄に緯度・経度を入れます。</figcaption>
+</figure>
+<p>座標が分からない時は、次のどちらかを使います。</p>
+<ul>
+  <li><b>有名な場所から選ぶ</b> …… 東京タワー、大阪城などを選ぶと、座標が入ります。</li>
+  <li><b>Googleマップで探す</b> …… 地図で場所を右クリック → いちばん上に出る数字（緯度, 経度）を押してコピー → 欄に貼り付け。</li>
+</ul>
+<figure>
+  <img src="ガイドの画像/02-place-selected.png" alt="東京タワーを選んだところ。データがありますと緑で表示されている">
+  <figcaption>「確認」で、その場所にデータがあるかを調べます。緑の「データがあります」が出れば OK。</figcaption>
+</figure>
+
+<h3>質問2：広さ</h3>
+<figure>
+  <img src="ガイドの画像/03-size.png" alt="広さを選ぶ画面">
+  <figcaption>初めてなら「小さめ（200m 四方）」がおすすめ。広いほど時間とデータ量が増えます。</figcaption>
+</figure>
+
+<h3>質問3：保存先</h3>
+<figure>
+  <img src="ガイドの画像/04-output.png" alt="保存先の画面。ドキュメントのPLATEAUフォルダに保存すると表示されている">
+  <figcaption>そのままなら「ドキュメント\PLATEAU\scene.blend」に保存されます。「変更」で別の場所も選べます。</figcaption>
+</figure>
+<p>「<b>3Dの街を作る</b>」を押すと作り始めます。</p>
+
+<figure>
+  <img src="ガイドの画像/05-running.png" alt="作成中の画面。2/4 建物を準備しています">
+  <figcaption>作成中。4つの段階を順に進みます。小さめなら数十秒〜数分です。</figcaption>
+</figure>
+<figure>
+  <img src="ガイドの画像/06-done.png" alt="街ができました！の画面">
+  <figcaption>できあがり。「Blenderで街を開く」で、すぐに Blender が開きます。</figcaption>
+</figure>
+
+<h2 id="files">5. できあがったファイル</h2>
+<table>
+  <tr><th>scene.blend</th><td>3D の街。Blender で開きます。航空写真も中に入っています。</td></tr>
+  <tr><th>scene.provenance.json</th><td>使ったデータの出典の記録。消さないでください。</td></tr>
+  <tr><th>scene.work（フォルダ）</th><td>作業用。容量が気になる時は消して大丈夫です（scene.blend はそのまま開けます）。</td></tr>
+</table>
+
+<h2 id="how">6. しくみ：中で何が起きているか</h2>
+<p>「3Dの街を作る」を押すと、この道具は次の4つの段階を順に行います。作成中の画面の「1/4」〜「4/4」がこれです。</p>
+<div class="flow">
+  <span><b>1</b> データを探す</span>→
+  <span><b>2</b> 建物を準備</span>→
+  <span><b>3</b> 地形と写真を準備</span>→
+  <span><b>4</b> Blender で保存・確認</span>
+</div>
+<table>
+  <tr><th>1. データを探す</th><td>入れた場所を含む PLATEAU のデータ（都市ごと・区画ごとに分かれています）を探します。</td></tr>
+  <tr><th>2. 建物を準備</th><td>PLATEAU の建物は <b>CityGML</b> という、地図用の XML 形式で配られています。これを <b>nusamai</b>（同梱の変換ツール）で、3D ソフトが読める OBJ 形式に変換し、範囲の外の建物を切り落とします。</td></tr>
+  <tr><th>3. 地形と写真を準備</th><td>国土地理院の地理院タイルから、その範囲の<b>航空写真</b>と<b>標高</b>を集め、写真を貼った地面を作ります。</td></tr>
+  <tr><th>4. Blender で保存・確認</th><td>Blender を裏で動かして建物と地面を置き、<code>.blend</code> に保存します。最後に、保存したファイルを開き直して、建物・地面・写真・座標がそろっているかを確かめます。</td></tr>
+</table>
+<p class="note">緯度・経度は地球の上の角度なので、そのままでは「メートル」で測れません。この道具は場所に合った<b>平面直角座標系</b>（日本を19の地域に分けた、メートル単位の座標）へ自動で変換してから組み立てています。詳細設定の「EPSG」がその座標系の番号で、「AUTO」のままなら自動で選びます。</p>
+
+<h3>詳細設定</h3>
+<figure>
+  <img src="ガイドの画像/07-advanced.png" alt="詳細設定の画面">
+  <figcaption>画面下の「詳細設定」で、建物の細かさ（LOD）、航空写真の解像度、Blender の場所などを変えられます。分からないうちはそのままで大丈夫です。</figcaption>
+</figure>
+
+<h2 id="trouble">7. 困った時</h2>
+<h3>「好きな街を3Dにしよう」という見出しの、灰色の1枚の画面が開いた</h3>
+<p>新しい画面を開けなかった時の予備の画面です。そのまま使えますが、次のフォルダにある <code>gui-fallback-（日付）.log</code> を配った人に送ってください。</p>
+<p><span class="path">%LOCALAPPDATA%\PLATEAU-Blender-Bridge\logs</span><br>（エクスプローラーのアドレス欄にこの1行を貼り付けて Enter で開けます）</p>
+<h3>「この場所にはデータがありません」と出る</h3>
+<p>PLATEAU の建物データがまだ無い地域です。「有名な場所から選ぶ」か、別の場所を試してください。</p>
+<h3>Blender が見つからないと言われる</h3>
+<p>Blender をインストールしてから、「詳細設定」→「Blender / CLIを再スキャン」を押してください。別の場所に入れた時は、「Blender本体」の「参照」で <code>blender.exe</code> を選びます。</p>
+<h3>「作れませんでした」と出た</h3>
+<p>同じ画面の「ログを保存」で保存したファイルを、配った人に送ってください。「くわしく見る」を押すと、何が起きたかをその場で読めます。</p>
+
+<h2 id="credit">8. 作った街を発表・配布する時（出典の書き方）</h2>
+<p>作った街や、その画像・動画を人に見せる時は、データの出典を書いてください。</p>
+<p class="note">出典：国土交通省「3D都市モデル（Project PLATEAU）」を加工して作成<br>
+出典：地理院タイル（全国最新写真（シームレス）、標高タイル）を加工して作成</p>
+<ul>
+  <li>PLATEAU のデータは都市ごとに利用条件が決められています。授業や社内で見せる範囲を超えて公開する時は、その都市のデータの配布ページで条件を確かめてください。<a href="https://www.mlit.go.jp/plateau/site-policy/">PLATEAU サイトポリシー</a></li>
+  <li>地理院タイルの利用条件：<a href="https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html">国土地理院コンテンツ利用規約</a></li>
+  <li>使ったデータの詳しい出典は <code>scene.provenance.json</code> に記録されています。</li>
+</ul>
+
+<h2 id="cleanup">9. 片付け方</h2>
+<p>展開したフォルダを消すだけです。設定やログは <span class="path">%LOCALAPPDATA%\PLATEAU-Blender-Bridge</span> に残るので、要らなければこちらも消してください。</p>
+
+<footer>
+  この道具に同梱しているソフトウェアのライセンスは、同じフォルダの <code>THIRD_PARTY_LICENSES.txt</code> にまとめています。<br>
+  画面の画像は作成時点のものです。
+</footer>
+
+</main>
+</body>
+</html>

@@ -1,3 +1,18 @@
+# v0.11 — 一問ずつの新しい画面、Edge アプリ窓、説明書とライセンスの同梱（2026-11-05）
+
+- 画面を「場所 → 広さ → 保存先」の一問ずつの形に作り直した（GUI v2、2026-11-02）。
+- 画面の土台を pywebview（WebView2）から、ローカル HTTP サーバー＋ Edge のアプリ窓へ載せ替えた。ネットから落とした ZIP の Mark of the Web で .NET の DLL 読込が止まり、旧画面へ黙って落ちていた問題の修正。pywebview・pythonnet の同梱をやめ、ZIP は 42.9MB → 37.5MB。
+- アプリ用 Edge を同期・拡張なしで開く（新しいプロファイルが利用者の拡張を全部入れ、案内タブを開いていた）。
+- 予備の Tk 画面へ切り替える時は、理由を `%LOCALAPPDATA%\PLATEAU-Blender-Bridge\logs\gui-fallback-*.log` に残す。
+- 配布物の exe の隣に `はじめにお読みください.txt`、画像つきの `使い方ガイド.html`、ビルド環境のライセンス原文を集めた `THIRD_PARTY_LICENSES.txt` を必ず置く（`packaging/dist_extras.py`）。
+- `start_dev_gui.bat` が旧画面を直接開いていたのを、凍結 exe と同じ入口（`plateau_launcher.py`）に直した。
+- README を開発者向けに書き直し、旧版は `docs/history/README_v0.10.md` へ移した。
+- 記録：`docs/gui_v2_check_2026-11-02.md`、`docs/gui_edge_app_2026-11-05.md`。
+
+v0.10 の変更は `CHANGELOG-v0.10.md`。
+
+---
+
 # v0.9 — 保存後の外観検証 / DEM欠損を0mにしない（2026-10-16）
 
 - Blender再読込の `blender_verify.py` に、地形全メッシュでのpacked画像→Base Color接続、UV有限性・非縮退チェックを追加。

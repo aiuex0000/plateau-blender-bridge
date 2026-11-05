@@ -37,3 +37,19 @@ if (tools / 'nusamai.exe').is_file():
     dest.mkdir(parents=True, exist_ok=True)
     for f in tools.iterdir():
         if f.is_file(): shutil.copy2(f, dest / f.name)
+
+# User documentation and third-party license texts sit beside the exe, so a
+# user can read them without opening _internal. Missing files fail the build.
+import sys
+sys.path.insert(0, str(root / 'packaging'))
+import dist_extras
+import PIL
+
+app = Path(DISTPATH) / 'PLATEAU-Blender-Bridge'
+dist_extras.copy_user_docs(root / 'packaging' / 'user_docs', app)
+site_packages = Path(PIL.__file__).resolve().parent.parent
+dist_extras.write_third_party_licenses(
+    app,
+    dist_extras.default_sources(Path(sys.base_prefix), site_packages, root, app),
+    root / 'packaging' / 'third_party_extra.txt',
+)

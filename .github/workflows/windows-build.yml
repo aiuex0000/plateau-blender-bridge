@@ -36,9 +36,9 @@ jobs:
       - name: Package portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path 'dist/PLATEAU-Blender-Bridge' -DestinationPath 'PLATEAU-Blender-Bridge-v0.10-win-x64.zip' -CompressionLevel Optimal
+          Compress-Archive -Path 'dist/PLATEAU-Blender-Bridge' -DestinationPath 'PLATEAU-Blender-Bridge-v0.11-win-x64.zip' -CompressionLevel Optimal
       - uses: actions/upload-artifact@v4
         with:
-          name: PLATEAU-Blender-Bridge-v0.10-win-x64
-          path: PLATEAU-Blender-Bridge-v0.10-win-x64.zip
+          name: PLATEAU-Blender-Bridge-v0.11-win-x64
+          path: PLATEAU-Blender-Bridge-v0.11-win-x64.zip
           if-no-files-found: error

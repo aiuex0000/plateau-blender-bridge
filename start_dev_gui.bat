@@ -6,7 +6,7 @@ set "PYTHON="
 if exist "%PLATEAU_BRIDGE_VENV%\Scripts\pythonw.exe" set "PYTHON=%PLATEAU_BRIDGE_VENV%\Scripts\pythonw.exe"
 if not defined PYTHON if exist "%PLATEAU_BRIDGE_VENV%\Scripts\python.exe" set "PYTHON=%PLATEAU_BRIDGE_VENV%\Scripts\python.exe"
 if not defined PYTHON goto no_venv
-"%PYTHON%" -m plateau_blend.auto_gui
+"%PYTHON%" plateau_launcher.py %*
 exit /b %errorlevel%
 :no_venv
 echo Developer virtual environment was not found.
