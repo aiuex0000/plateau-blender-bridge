@@ -1,4 +1,4 @@
-# v0.11.4 — GitHub配布とライセンス整備（未リリース、2026-11-06）
+# v0.11.4 — GitHub配布とライセンス整備（2026-11-06）
 
 - 本体をMIT Licenseとし、配布ZIPへのライセンス原文の同梱を設定。
 - 同梱nusamaiから、Bridgeが使わない3D Tiles・MVT・MLT・PMTiles出力を外した。再配布条件を確認できない依存 `kv-extsort` は、これで配布物に入らない（`patches/nusamai-v0.1.19-drop-unused-sinks.patch`）。OBJ出力は池田市の372棟で頂点・面とも旧版と一致。
