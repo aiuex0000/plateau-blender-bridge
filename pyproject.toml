@@ -9,6 +9,10 @@ description = "Project PLATEAU auto CityGML + GSI terrain + aerial imagery to Bl
 requires-python = ">=3.10"
 dependencies = ["Pillow>=10.0,<13", "pyproj>=3.6,<4"]
 
+[project.urls]
+Repository = "https://github.com/aiuex0000/plateau-blender-bridge"
+Issues = "https://github.com/aiuex0000/plateau-blender-bridge/issues"
+
 [project.scripts]
 plateau-blend = "plateau_blend.cli:main"
 plateau-blend-gui = "plateau_blend.gui:main"
