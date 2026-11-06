@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -22,14 +23,18 @@ def app_root() -> Path:
 
 
 def _writable(folder: Path) -> bool:
+    """一意の名前で排他的に作って確かめ、自分が作った物だけを消す（既存のファイルには触れない）。"""
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        probe = folder / '.write-test'
-        probe.write_bytes(b'')
-        probe.unlink()
-        return True
+        handle, name = tempfile.mkstemp(prefix='.write-test-', dir=folder)
     except OSError:
         return False
+    os.close(handle)
+    try:
+        os.unlink(name)
+    except OSError:
+        pass  # 書けることは分かった。空の確認用ファイルが1つ残るだけ
+    return True
 
 
 def data_dir(root: Path | None = None) -> Path:

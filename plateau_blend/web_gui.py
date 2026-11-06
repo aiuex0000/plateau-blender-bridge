@@ -86,8 +86,12 @@ def _documents_output() -> Path:
 
 def _default_kind() -> str:
     """ポータブルアプリなので、既定はアプリのフォルダ。書けない時（Program Files など）だけドキュメント。
-    ``作った街`` はまだ作らず、親（exe のフォルダ）に書けるかだけを見る。"""
-    return 'app' if _folder_writable(_app_folder().parent) else 'documents'
+    ``作った街`` がまだ無ければ作らず、親（exe のフォルダ）に書けるかだけを見る。
+    もうあれば、それ自体がフォルダで書けるかを見る（同名のファイルや読み取り専用なら使わない）。"""
+    folder = _app_folder()
+    if folder.exists():
+        return 'app' if folder.is_dir() and _folder_writable(folder) else 'documents'
+    return 'app' if _folder_writable(folder.parent) else 'documents'
 
 
 def _default_output() -> Path:
@@ -1049,19 +1053,18 @@ def _open_browser(url: str) -> bool:
 def _session_outcome(now, started_at, last_contact, *, process=None, process_alive=True,
                      bye_at=None, first_timeout=FIRST_CONTACT_TIMEOUT,
                      idle_timeout=IDLE_TIMEOUT, bye_grace=BYE_GRACE) -> str:
-    """今の状態から次の判断を返す。``wait`` / ``opened`` / ``closed`` / ``failed``。
+    """今の状態から次の判断を返す。``wait`` / ``closed`` / ``failed``。
 
     主な終わりの合図は画面の pagehide から届く ``_bye``。届いた後 ``bye_grace`` 秒
-    連絡が戻らなければ閉じた、戻れば再読込とみなす。Edge は起動した msedge.exe が
-    本体を起動し直してすぐ終わることが多いので、プロセスの生死は「生きている間は
-    終わっていない」と「連絡の後に終わった」だけに使う。心拍の途切れは最後の保険。
+    連絡が戻らなければ閉じた、戻れば再読込とみなす。心拍の途切れは最後の保険。
+    Edge は起動した msedge.exe が本体を起動し直してすぐ終わることが多く、その瞬間は
+    最初の連絡の前にも後にも来うる。なので最初の連絡の後は、プロセスの生死を見ない
+    （2026-11-06 Sol レビュー：連絡の後に抜けると、窓が残ったままサーバーを止めていた）。
     """
     if last_contact is None:
         if process is not None and not process_alive:
             return 'failed'
         return 'failed' if now - started_at >= first_timeout else 'wait'
-    if process is not None and not process_alive:
-        return 'opened'
     if bye_at is not None and bye_at >= last_contact and now - bye_at >= bye_grace:
         return 'closed'
     if now - last_contact >= idle_timeout:
@@ -1124,7 +1127,7 @@ def main() -> bool:
                     except Exception:
                         pass
                 return False
-            if outcome in ('opened', 'closed'):
+            if outcome == 'closed':
                 break
             time.sleep(0.2)
     except Exception as exc:

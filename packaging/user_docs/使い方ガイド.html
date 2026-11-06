@@ -73,7 +73,8 @@
 </table>
 
 <h2 id="start">3. 始め方</h2>
-<p>このフォルダは、デスクトップやドキュメントなど自分で書き込める場所に置いて使います（「Program Files」の中では動きません）。ログなどもこのフォルダの中の <code>data</code> に書くので、パソコンのほかの場所は汚しません。</p>
+<p>このフォルダは、デスクトップやドキュメントなど自分で書き込める場所に置いて使います。ログなどもこのフォルダの中の <code>data</code> に書くので、パソコンのほかの場所は汚しません。<br>
+（「Program Files」の中など書き込めない場所でも動きますが、その時はログが Windows の一時フォルダに、作った街が「ドキュメント\PLATEAU」に置かれます）</p>
 <div class="step">
   <h3><span class="num">1</span>exe をダブルクリック</h3>
   <p>このフォルダの <code>PLATEAU-Blender-Bridge.exe</code> をダブルクリックします。</p>
@@ -166,13 +167,18 @@
 <p>同じ画面の「ログを保存」で保存したファイルを、配った人に送ってください。「くわしく見る」を押すと、何が起きたかをその場で読めます。</p>
 
 <h2 id="credit">8. 作った街を発表・配布する時（出典の書き方）</h2>
-<p>作った街や、その画像・動画を人に見せる時は、データの出典を書いてください。</p>
-<p class="note">出典：国土交通省「3D都市モデル（Project PLATEAU）」を加工して作成<br>
-出典：地理院タイル（全国最新写真（シームレス）、標高タイル）を加工して作成</p>
+<p>作った街や、その画像・動画を人に見せる時は、授業や社内で見せる時も含めて、データの出典を書いてください。建物と地形・写真で、出典は別々に書きます。</p>
+<h3>建物（PLATEAU の 3D 都市モデル）</h3>
+<p>3D 都市モデルの著作権は、それぞれの市区町村にあります。使った都市と年度を入れて書きます。例（○○と年度を差し替える）：</p>
+<p class="note">出典：「3D都市モデル（Project PLATEAU）○○区（2025年度）」（国土交通省）を加工して作成</p>
 <ul>
-  <li>PLATEAU のデータは都市ごとに利用条件が決められています。授業や社内で見せる範囲を超えて公開する時は、その都市のデータの配布ページで条件を確かめてください。<a href="https://www.mlit.go.jp/plateau/site-policy/">PLATEAU サイトポリシー</a></li>
-  <li>地理院タイルの利用条件：<a href="https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html">国土地理院コンテンツ利用規約</a></li>
-  <li>使ったデータの詳しい出典は <code>scene.provenance.json</code> に記録されています。</li>
+  <li>使った都市名と年度は、<code>scene.provenance.json</code> の <code>"city"</code> と <code>"year"</code> に記録されています（メモ帳で開けます）。</li>
+  <li>都市ごとに利用条件と出典の書き方が決められています。その都市のデータの配布ページで確かめ、指定があればそちらに合わせてください。<a href="https://www.mlit.go.jp/plateau/site-policy/">PLATEAU サイトポリシー</a></li>
+</ul>
+<h3>地形と航空写真（国土地理院の地理院タイル）</h3>
+<p class="note">出典：地理院タイル（全国最新写真（シームレス）、標高タイル）を加工して作成</p>
+<ul>
+  <li>利用条件：<a href="https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html">国土地理院コンテンツ利用規約</a></li>
 </ul>
 
 <h2 id="cleanup">9. 片付け方</h2>

@@ -140,8 +140,11 @@ def default_sources(build_python_prefix: Path, site_packages: Path, root: Path,
             [dist_app_dir / '_internal' / '_tk_data' / 'license.terms']),
     ]
 
-    nusamai_license = root / 'tools' / 'nusamai' / 'LICENSE-nusamai.txt'
-    if nusamai_license.is_file():
+    # spec と同じく exe の有無で同梱を決める。exe があって原文が無ければ、
+    # write_third_party_licenses の欠落検査でビルドを止める。
+    nusamai_dir = root / 'tools' / 'nusamai'
+    nusamai_license = nusamai_dir / 'LICENSE-nusamai.txt'
+    if (nusamai_dir / 'nusamai.exe').is_file():
         sources.append(LicenseSource(
             'nusamai', _nusamai_version(root), 'MIT', NUSAMAI_URL, [nusamai_license]))
 

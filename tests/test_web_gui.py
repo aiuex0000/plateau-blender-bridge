@@ -444,6 +444,14 @@ class OutputFolderTests(BridgeTestCase):
             self.assertEqual(web_gui._default_output(), app / 'scene.blend')
         self.assertFalse(app.exists())  # 既定を決めるだけでは作らない
 
+    def test_default_skips_an_app_folder_name_taken_by_a_file(self):
+        taken = Path(self._tmp.name) / '作った街'
+        taken.write_bytes(b'')
+        documents = Path(self._tmp.name) / 'Documents' / 'PLATEAU' / 'scene.blend'
+        with patch.object(web_gui, '_app_folder', return_value=taken), \
+             patch.object(web_gui, '_documents_output', return_value=documents):
+            self.assertEqual(web_gui._default_kind(), 'documents')
+
     def test_default_falls_back_to_documents_when_the_app_folder_is_read_only(self):
         blocked = Path(self._tmp.name) / 'blocked'
         blocked.write_bytes(b'')
@@ -578,7 +586,7 @@ class EdgeAndFallbackTests(BridgeTestCase):
         self.assertIn('--disable-extensions', args)
         self.assertIn('--window-size=900,780', args)
 
-    def test_session_outcome_uses_heartbeat_for_browser_and_process_for_edge(self):
+    def test_session_outcome_uses_process_only_before_first_contact(self):
         self.assertEqual(web_gui._session_outcome(10, 0, None), 'wait')
         self.assertEqual(web_gui._session_outcome(61, 0, None), 'failed')
         self.assertEqual(web_gui._session_outcome(100, 0, 10), 'wait')
@@ -590,8 +598,15 @@ class EdgeAndFallbackTests(BridgeTestCase):
         # Edge が生きていても心拍が途切れたら閉じる（本体は起動し直した別プロセスのことが多い）
         self.assertEqual(web_gui._session_outcome(
             200, 0, 10, process=process, process_alive=True), 'closed')
+        # 最初の連絡の後に起動プロセスが抜けても（本体への引き渡し）終わらない。心拍と bye で見る
         self.assertEqual(web_gui._session_outcome(
-            200, 0, 10, process=process, process_alive=False), 'opened')
+            10.2, 0, 10.1, process=process, process_alive=False), 'wait')
+        self.assertEqual(web_gui._session_outcome(
+            100, 0, 10, process=process, process_alive=False), 'wait')
+        self.assertEqual(web_gui._session_outcome(
+            200, 0, 10, process=process, process_alive=False), 'closed')
+        self.assertEqual(web_gui._session_outcome(
+            14.5, 0, 10, process=process, process_alive=False, bye_at=11), 'closed')
         self.assertEqual(web_gui._session_outcome(
             200, 0, None, process=process, process_alive=False), 'failed')
         self.assertEqual(web_gui._session_outcome(

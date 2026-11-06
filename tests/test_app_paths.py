@@ -15,6 +15,16 @@ class DataDirTests(unittest.TestCase):
             self.assertEqual(app_paths.edge_profile_dir(root), root / 'data' / 'edge-profile')
             self.assertEqual(list((root / 'data').iterdir()), [])  # 書込み確認の跡を残さない
 
+    def test_write_check_leaves_existing_files_alone(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / 'data').mkdir()
+            kept = root / 'data' / '.write-test'
+            kept.write_text('keep me', encoding='utf-8')
+            self.assertEqual(app_paths.data_dir(root), root / 'data')
+            self.assertEqual(kept.read_text(encoding='utf-8'), 'keep me')
+            self.assertEqual(sorted(p.name for p in (root / 'data').iterdir()), ['.write-test'])
+
     def test_falls_back_to_temp_when_the_app_folder_is_read_only(self):
         with tempfile.TemporaryDirectory() as td:
             with patch.object(app_paths, '_writable', return_value=False), \

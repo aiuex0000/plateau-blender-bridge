@@ -103,7 +103,7 @@ CLI でも動かせます。
 4. PyInstaller（`packaging/plateau_bridge.spec`）で `dist\PLATEAU-Blender-Bridge\` を作る。spec の最後で `packaging/user_docs/` の説明書と、ビルド環境のライセンス原文を集めた `THIRD_PARTY_LICENSES.txt` を exe の隣に置く（原文が見つからなければビルドを止める）
 5. 凍結 exe の `--self-check`
 
-GitHub Actions（`.github/workflows/windows-build.yml`）でも同じ流れで ZIP を作れます（nusamai は同梱されません）。
+GitHub Actions（`.github/workflows/windows-build.yml`）でも同じ流れで ZIP を作れます（`build_nusamai.bat` で nusamai もビルドして同梱します）。
 
 ### 配る前の確認
 
