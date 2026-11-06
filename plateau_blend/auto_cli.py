@@ -30,7 +30,8 @@ def _flag_path(argv,flag):
 
 def _default_result(out):
     if out:return out.with_name(out.stem+'.result.json')
-    return Path.home()/'Documents'/'PLATEAU'/'cli_result.json'
+    from .app_paths import data_dir
+    return data_dir()/'cli_result.json'
 
 def _result_path(args,out):
     return args.result_json or _default_result(out)
@@ -67,7 +68,7 @@ def main(argv=None):
     p.add_argument('--diagnose',action='store_true',help='report installed Blender/CLI versions and free disk space')
     p.add_argument('--no-clip',action='store_true',help='include full source mesh, skip bbox crop')
     p.add_argument('--axis',choices=['auto','xyz','yxz'],default='auto')
-    p.add_argument('--result-json',type=Path,help='machine-readable result JSON (default: next to --output, else Documents/PLATEAU/cli_result.json)')
+    p.add_argument('--result-json',type=Path,help='machine-readable result JSON (default: next to --output, else data/cli_result.json next to the app)')
     started=_now()
     try:args=p.parse_args(argv)
     except SystemExit as exc:

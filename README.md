@@ -26,7 +26,7 @@
 
 `plateau_blend/web/` の手書き HTML/CSS/JS を、アプリ内の小さな HTTP サーバー（`plateau_blend/web_server.py`、`127.0.0.1` のみ・起動ごとの token つき）から配り、Microsoft Edge のアプリ窓（`--app`）で開きます。画面から Python を呼ぶ面は `plateau_blend/web_gui.py` の `BridgeApi` です。
 
-- ポータブルアプリなので、アプリが書く物（ログと Edge の専用プロファイル）は exe の隣の `data\` に置き、`%LOCALAPPDATA%` などフォルダの外へは書きません（`plateau_blend/app_paths.py`）。フォルダが書き込めない時だけ一時フォルダを使います。開発時は repo 直下の `data\`（git 管理外）。
+- ポータブルアプリなので、アプリが書く物（ログと Edge の専用プロファイル）は exe の隣の `data\` に置き、`%LOCALAPPDATA%` などフォルダの外へは書きません（`plateau_blend/app_paths.py`）。フォルダが書き込めない時だけ一時フォルダを使います。開発時は repo 直下の `data\`（git 管理外）。作った街の保存先も、既定は exe の隣の `作った街\`（書けなければ `Documents\PLATEAU`）。
 - Edge は専用プロファイル（`data\edge-profile`）を同期・拡張なしで開きます。
 - 窓を閉じると、画面の `pagehide` からの合図でアプリも終わります。
 - 新画面を開けない時は Tk の予備画面（`plateau_blend/auto_gui.py`）へ切り替わり、理由を `data\logs\gui-fallback-*.log` に残します。

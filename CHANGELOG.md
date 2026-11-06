@@ -1,3 +1,9 @@
+# v0.11.2 — 保存先の既定をアプリのフォルダに（2026-11-06）
+
+- 作った街の保存先の既定を `Documents\PLATEAU\scene.blend` から、exe の隣の `作った街\scene.blend` へ変えた（新画面・予備の Tk 画面とも）。フォルダが書き込めない時だけドキュメントにする。3問目の並びも「アプリのフォルダ」を先頭にした。
+- CLI で `--output` を省いた時の結果 JSON も `data\cli_result.json` へ。
+- 説明書：保存先の説明と画像を差し替え、片付けの節に「消す前に作った街を移す」を足した。
+
 # v0.11.1 — ポータブル化：フォルダの外へ書かない（2026-11-06）
 
 - ログ（`gui-fallback-*.log`・`crash-*.log`）と Edge の専用プロファイルを、`%LOCALAPPDATA%\PLATEAU-Blender-Bridge` から exe の隣の `data\` へ移した（`plateau_blend/app_paths.py`）。フォルダごと消せば片付く。フォルダが書き込めない時だけ一時フォルダを使う。

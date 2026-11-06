@@ -80,8 +80,20 @@ def _gui():
     return _GUI
 
 
-def _default_output() -> Path:
+def _documents_output() -> Path:
     return Path.home() / 'Documents' / 'PLATEAU' / 'scene.blend'
+
+
+def _default_kind() -> str:
+    """ポータブルアプリなので、既定はアプリのフォルダ。書けない時（Program Files など）だけドキュメント。
+    ``作った街`` はまだ作らず、親（exe のフォルダ）に書けるかだけを見る。"""
+    return 'app' if _folder_writable(_app_folder().parent) else 'documents'
+
+
+def _default_output() -> Path:
+    if _default_kind() == 'app':
+        return _app_folder() / _documents_output().name
+    return _documents_output()
 
 
 def _app_folder() -> Path:
@@ -342,6 +354,7 @@ class BridgeApi:
                  'hint': '例: 5235xxxx（6/8/9/10桁のメッシュ番号）'},
             ],
             'default_output': str(_default_output()),
+            'default_kind': _default_kind(),
             'outputs': self.output_choices(),
             'min_size': [730, 580],
             'cancelled_message': gui.CANCELLED_MESSAGE,
@@ -473,7 +486,7 @@ class BridgeApi:
 
     def output_choices(self) -> dict:
         """保存場所の切替に出す2つの候補（フォルダ）。"""
-        return {'documents': str(_default_output().parent), 'app': str(_app_folder())}
+        return {'documents': str(_documents_output().parent), 'app': str(_app_folder())}
 
     def use_output_folder(self, kind: str | None = None, current: str | None = None) -> dict | None:
         """``documents`` / ``app`` へ保存場所を切り替える。書けなければドキュメントへ戻す。"""
@@ -481,15 +494,15 @@ class BridgeApi:
         if kind not in ('documents', 'app'):
             return None
         raw = str(current or '').strip()
-        name = Path(raw).name if raw else _default_output().name
+        name = Path(raw).name if raw else _documents_output().name
         if not name:
-            name = _default_output().name
+            name = _documents_output().name
         if not name.lower().endswith('.blend'):
             name += '.blend'
-        folder = _default_output().parent if kind == 'documents' else _app_folder()
+        folder = _documents_output().parent if kind == 'documents' else _app_folder()
         if _folder_writable(folder):
             return {'output': str(folder / name), 'folder': str(folder), 'kind': kind}
-        fallback = _default_output().parent
+        fallback = _documents_output().parent
         self._log(f'[OUTPUT] {folder} には保存できません。ドキュメントを使ってください')
         result = {'error': 'このフォルダには保存できません。ドキュメントを使ってください',
                   'kind': 'documents'}

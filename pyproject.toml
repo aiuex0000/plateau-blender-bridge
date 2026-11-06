@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plateau-blend-mvp"
-version = "0.11.1"
+version = "0.11.2"
 description = "Project PLATEAU auto CityGML + GSI terrain + aerial imagery to Blender"
 requires-python = ">=3.10"
 dependencies = ["Pillow>=10.0,<13", "pyproj>=3.6,<4"]

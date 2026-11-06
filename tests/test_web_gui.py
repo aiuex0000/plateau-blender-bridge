@@ -420,7 +420,7 @@ class OutputFolderTests(BridgeTestCase):
     def test_switches_to_documents(self):
         api = BridgeApi()
         documents = Path(self._tmp.name) / 'Documents' / 'PLATEAU'
-        with patch.object(web_gui, '_default_output', return_value=documents / 'scene.blend'):
+        with patch.object(web_gui, '_documents_output', return_value=documents / 'scene.blend'):
             result = api.use_output_folder('documents', str(self.output))
         self.assertEqual(result['output'], str(documents / 'scene.blend'))
 
@@ -430,12 +430,28 @@ class OutputFolderTests(BridgeTestCase):
         blocked.write_bytes(b'')
         documents = Path(self._tmp.name) / 'Documents' / 'PLATEAU'
         with patch.object(web_gui, '_app_folder', return_value=blocked / '作った街'), \
-             patch.object(web_gui, '_default_output', return_value=documents / 'scene.blend'):
+             patch.object(web_gui, '_documents_output', return_value=documents / 'scene.blend'):
             result = api.use_output_folder('app', str(self.output))
         self.assertIn('error', result)
         self.assertIn('ドキュメント', result['error'])
         self.assertEqual(result['output'], str(documents / 'scene.blend'))
         self.assertEqual(result['kind'], 'documents')
+
+    def test_default_is_the_app_folder_when_writable(self):
+        app = Path(self._tmp.name) / '作った街'
+        with patch.object(web_gui, '_app_folder', return_value=app):
+            self.assertEqual(web_gui._default_kind(), 'app')
+            self.assertEqual(web_gui._default_output(), app / 'scene.blend')
+        self.assertFalse(app.exists())  # 既定を決めるだけでは作らない
+
+    def test_default_falls_back_to_documents_when_the_app_folder_is_read_only(self):
+        blocked = Path(self._tmp.name) / 'blocked'
+        blocked.write_bytes(b'')
+        documents = Path(self._tmp.name) / 'Documents' / 'PLATEAU' / 'scene.blend'
+        with patch.object(web_gui, '_app_folder', return_value=blocked / '作った街'), \
+             patch.object(web_gui, '_documents_output', return_value=documents):
+            self.assertEqual(web_gui._default_kind(), 'documents')
+            self.assertEqual(web_gui._default_output(), documents)
 
     def test_unknown_kind_is_refused(self):
         self.assertIsNone(BridgeApi().use_output_folder('other', 'scene.blend'))

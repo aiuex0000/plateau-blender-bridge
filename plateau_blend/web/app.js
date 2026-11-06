@@ -22,7 +22,7 @@ const state = {
   blenderOk: false,
   advReturn: { view: 'input', step: 1 },
   plan: null,
-  saveKind: 'documents',
+  saveKind: 'app',
   inspect: { ok: false, explicit_size_m: null, error: '' },
   placeRequest: null,
   placeTimer: 0,
@@ -90,6 +90,7 @@ async function start() {
     console.error('initial_state failed', error);
   }
   state.form.output = state.meta.default_output || '';
+  paintSaveLocation(state.meta.default_kind || 'documents');
   state.form.size = state.meta.default_size || '400';
   $('foot-version').textContent = state.meta.version ? 'v' + state.meta.version : '';
   renderPlaces();

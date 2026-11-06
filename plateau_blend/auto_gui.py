@@ -169,7 +169,8 @@ class AutoGui(tk.Tk):
         self.size_radios=self.radio_group(size,self.size,[('小さめ 200m','200'),('標準 400m','400'),('広め 800m','800'),('入力欄の指定を使う','input')])
         save=ttk.LabelFrame(container,text='③ 保存先',padding=8);save.grid(row=4,column=0,sticky='ew');save.columnconfigure(0,weight=1)
         self.blender_var=tk.StringVar();self.nusamai_var=tk.StringVar()
-        self.output_var=tk.StringVar(value=str(Path.home()/'Documents'/'PLATEAU'/'scene.blend'))
+        from .web_gui import _default_output  # 新画面と同じ既定（アプリのフォルダ。書けなければドキュメント）
+        self.output_var=tk.StringVar(value=str(_default_output()))
         self.output_name=tk.StringVar(value=Path(self.output_var.get()).name)
         self.output_var.trace_add('write',lambda *_:self.output_name.set(Path(self.output_var.get()).name))
         ttk.Label(save,textvariable=self.output_name,font=('Yu Gothic UI',11)).grid(row=0,column=0,sticky='w')
