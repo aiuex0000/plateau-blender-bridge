@@ -28,7 +28,7 @@
 
 画面は作成時点のものです。詳しい操作と出典の書き方は、[利用者向けの説明書](packaging/user_docs/はじめにお読みください.txt)にあります。画像つきの `使い方ガイド.html` は配布フォルダ内で開いてください。
 
-このリポジトリにはソースコードを置いています。GitHubの「Code → Download ZIP」はソースの取得用で、実行ファイルの配布ZIPとは異なります。配布版を公開した場合は、[Releases](https://github.com/aiuex0000/plateau-blender-bridge/releases)に掲載します。
+このリポジトリにはソースコードを置いています。GitHubの「Code → Download ZIP」はソースの取得用で、実行ファイルの配布ZIPとは異なります。実行ファイル入りの配布ZIPは [Releases](https://github.com/aiuex0000/plateau-blender-bridge/releases) で配布する予定です。現在は同梱ソフトウェアの再配布条件を確認中で、EXEのReleaseはまだありません。
 
 ### できることと対象範囲
 
@@ -159,7 +159,8 @@ GitHub Actions（`.github/workflows/windows-build.yml`）でも同じ流れで Z
 ## ライセンス
 
 - 同梱しているサードパーティのソフトウェアのライセンスは、配布物の `THIRD_PARTY_LICENSES.txt` にまとめています（ビルド時に自動生成）。
-- このリポジトリ自体のライセンスは未定です。
+- 本体のソースコードと独自の文書は [MIT License](LICENSE) で公開しています。著作権表示は `Copyright (c) 2026 aiuex0000` です。
+- 同梱ソフトウェアには、それぞれのライセンスが適用されます。PLATEAU・地理院タイルなどの取得データには各配布元の利用条件が適用され、本体のMITライセンスで置き換わるものではありません。
 
 ## 変更履歴
 

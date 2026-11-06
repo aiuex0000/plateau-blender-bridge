@@ -20,7 +20,7 @@ class PackageContractTests(unittest.TestCase):
 
     def test_packaging_spec_names_blender_subprocess_scripts(self):
         contents=(Path(__file__).resolve().parent.parent/'packaging'/'plateau_bridge.spec').read_text(encoding='utf-8')
-        for target in ('blender_scene.py','blender_verify.py','collect_data_files(\'pyproj\')'):
+        for target in ('blender_scene.py','blender_verify.py','collect_data_files(\'pyproj\')', "shutil.copy2(root / 'LICENSE', app / 'LICENSE')"):
             self.assertIn(target,contents)
 
 if __name__=='__main__':unittest.main()

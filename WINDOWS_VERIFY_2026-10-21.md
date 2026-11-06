@@ -1,6 +1,6 @@
-# Windows実機検証 2026-10-21（ルナ）
+# Windows実機検証 2026-10-21（実装・検証担当AI）
 
-対象：PLATEAU-Blender-Bridge v0.10 + ローカル修正 `860f698`（原本 `0d17dfc`）
+対象：PLATEAU-Blender-Bridge v0.10 + ローカル修正 `020f968`（原本 `766257a`）
 OS：Windows 11 Pro 10.0.26200
 Python（ビルド環境のみ）：3.13.12 x64（uv venv `.build-venv`）、PyInstaller 6.22.3、Pillow 12.3.0、pyproj 3.8.0
 Blender：`C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`（5.2.2 LTS）
@@ -81,4 +81,4 @@ nusamai CLI：v0.1.19 をソースからビルドして同梱（下記）
 
 ## 運用の注意（反省）
 
-- マスターがGUIを開いたまま `dist` へ `--clean` で再ビルドし、使用中でないファイル（同梱nusamai）だけが消えた。すぐ `tools\nusamai` を戻して復旧。以降、検証用ビルドは `--distpath dist-next` に分け、GUI終了を確認してから入れ替える。旧版は `dist-old` に残してある
+- 開発者がGUIを開いたまま `dist` へ `--clean` で再ビルドし、使用中でないファイル（同梱nusamai）だけが消えた。すぐ `tools\nusamai` を戻して復旧。以降、検証用ビルドは `--distpath dist-next` に分け、GUI終了を確認してから入れ替える。旧版は `dist-old` に残してある

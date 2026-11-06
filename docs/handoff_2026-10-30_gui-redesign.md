@@ -5,21 +5,21 @@
 ## いまの状態
 
 - 機能はひととおり揃い、配布版で通っている。エンジン、簡単画面、詳細設定、中止、ログの保存とコピー、CLIの結果JSON、Blender未検出時の公式リンクがある。
-- 正本：`C:\Users\You\Workspace\PLATEAU-Blender-Bridge`（git master、remoteなし、HEAD `8e8085e`）。repo の写しは `projects/plateau-blender-bridge`。
+- 正本：`C:\Users\You\Workspace\PLATEAU-Blender-Bridge`（git master、remoteなし、HEAD `e7cc8b6`）。repo の写しは `projects/plateau-blender-bridge`。
 - テスト：正本で126件OK。写しは126件OK・skip 1（`nusamai.exe` を置かないため）。
-- 配布先：`C:\Users\You\Workspace\Workbench\Projects\PLATEAU-Blender-Bridge\app`。中身は `c8e4abd` のビルドで、リンクボタン（`8e8085e`）はまだ入っていない。
+- 配布先：`C:\Users\You\Workspace\Workbench\Projects\PLATEAU-Blender-Bridge\app`。中身は `db5270b` のビルドで、リンクボタン（`e7cc8b6`）はまだ入っていない。
 - 今の画面：`plateau_blend/auto_gui.py`（Tk / ttk の vista テーマ）。手動OBJモードは `gui.py`。
 
-## マスターの方針（決定済み）
+## 開発者の方針（決定済み）
 
 - 想定する利用者は「普段PCを使わない人」。今の ttk の見た目は昔のWindowsソフト風で、初心者がためらいうる。マテリアルデザインのようなモダンな見た目にする。
 - 作り直しは **pywebview＋HTML** を推奨する（Windowsでは WebView2 で描画）。Tauri は将来の乗り換え先として残す。Electron は使わない。
 - Python で書くこと自体は問題にしない。配布版は Python 同梱の凍結EXE。
 - 署名はしない。初回起動の警告（SmartScreen）は、画像付きの案内で乗り切る。
 
-## 進め方の提案（未決。マスターと決める）
+## 進め方の提案（未決。開発者と決める）
 
-1. 画面の設計：リナの仕様と操作画面のプロトタイプ（`docs\gui_ux_v1_source\`）が、そのまま下敷きになる。画面に置く要素は今の簡単画面と同じでよい。
+1. 画面の設計：設計担当AIの仕様と操作画面のプロトタイプ（`docs\gui_ux_v1_source\`）が、そのまま下敷きになる。画面に置く要素は今の簡単画面と同じでよい。
 2. 骨組み：`auto_gui.py` の処理（生成の worker・キュー・中止・進行4段階・完了時の開くボタン）を画面から切り離し、pywebview の JS API から呼べる形にする。エンジン（`auto.py` など）には触らない。
 3. 今の Tk 画面は、新しい画面が揃うまで残す（`--legacy` などで起動できるようにする）。
 4. PyInstaller の spec に pywebview と HTML 資産を足す。凍結EXEで WebView2 が無い環境の扱いを決める（Windows 11 には標準で入っている）。

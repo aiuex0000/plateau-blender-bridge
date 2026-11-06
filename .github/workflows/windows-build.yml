@@ -33,12 +33,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bundled exe self check failed' }
           $report = Get-Content 'frozen-check.json' -Raw -Encoding utf8 | ConvertFrom-Json
           if (-not $report.passed) { throw 'Bundle requirements missing' }
+      - name: Read package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          "value=$version" >> $env:GITHUB_OUTPUT
       - name: Package portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path 'dist/PLATEAU-Blender-Bridge' -DestinationPath 'PLATEAU-Blender-Bridge-v0.11-win-x64.zip' -CompressionLevel Optimal
+          Compress-Archive -Path 'dist/PLATEAU-Blender-Bridge' -DestinationPath 'PLATEAU-Blender-Bridge-v${{ steps.version.outputs.value }}-win-x64.zip' -CompressionLevel Optimal
       - uses: actions/upload-artifact@v4
         with:
-          name: PLATEAU-Blender-Bridge-v0.11-win-x64
-          path: PLATEAU-Blender-Bridge-v0.11-win-x64.zip
+          name: PLATEAU-Blender-Bridge-v${{ steps.version.outputs.value }}-win-x64
+          path: PLATEAU-Blender-Bridge-v${{ steps.version.outputs.value }}-win-x64.zip
           if-no-files-found: error

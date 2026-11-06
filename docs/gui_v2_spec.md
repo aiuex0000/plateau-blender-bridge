@@ -2,7 +2,7 @@
 
 > 2026-11-05：描画を pywebview から「ローカルHTTP＋Edgeアプリ窓」へ載せ替えた（ZIP の Mark of the Web で .NET の DLL 読込が止まり、Tk へ落ちたため）。下の pywebview に関する記述は当時の記録。今の形は `docs/gui_edge_app_2026-11-05.md`。
 
-2026-10-30。見た目の土台は `docs/gui_v2_directions/directions.html` の B案（マスター決定）。画面の文言と置く要素は今の簡単画面（`plateau_blend/auto_gui.py`）と同じにし、エンジン（`auto.py` など）には触らない。
+2026-10-30。見た目の土台は `docs/gui_v2_directions/directions.html` の B案（開発者決定）。画面の文言と置く要素は今の簡単画面（`plateau_blend/auto_gui.py`）と同じにし、エンジン（`auto.py` など）には触らない。
 
 ## 決めたこと
 
@@ -94,7 +94,7 @@ JS からは `window.pywebview.api.<名前>(...)` で呼ぶ。戻り値は JSON 
 - イベントは `{"kind": ..., "data": ...}`。kind は今の `poll` と同じ（`scan` `place` `log` `result` `smoke_result` `done` `error` `cancelled`）に、`stage`（1〜4。`stage_for` で求める）を足す。
 - 走っている間に `start_generate` などが呼ばれたら何もしない（今の `running` と同じ）。
 
-## v2.1 の直し（2026-10-30、マスターが触った意見と Sol のレビューから）
+## v2.1 の直し（2026-10-30、開発者が触った意見と Sol のレビューから）
 
 この節は上の「画面の流れ」より優先する。
 

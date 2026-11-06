@@ -1,6 +1,6 @@
 # P2 回帰確認（2026-10-30）
 
-対象: `c8e4abd`（CLI結果JSON・起動batの固定パス除去）を含む再ビルド。配布先 `C:\Users\You\Workspace\Workbench\Projects\PLATEAU-Blender-Bridge\app\PLATEAU-Blender-Bridge.exe`（v0.10.0）
+対象: `db5270b`（CLI結果JSON・起動batの固定パス除去）を含む再ビルド。配布先 `C:\Users\You\Workspace\Workbench\Projects\PLATEAU-Blender-Bridge\app\PLATEAU-Blender-Bridge.exe`（v0.10.0）
 環境: K12、Blender 5.2.3 LTS
 
 ## ビルドと配置

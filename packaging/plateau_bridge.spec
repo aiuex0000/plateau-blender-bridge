@@ -47,6 +47,7 @@ import PIL
 
 app = Path(DISTPATH) / 'PLATEAU-Blender-Bridge'
 dist_extras.copy_user_docs(root / 'packaging' / 'user_docs', app)
+shutil.copy2(root / 'LICENSE', app / 'LICENSE')
 site_packages = Path(PIL.__file__).resolve().parent.parent
 dist_extras.write_third_party_licenses(
     app,
