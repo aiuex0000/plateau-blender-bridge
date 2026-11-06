@@ -73,17 +73,13 @@
 </table>
 
 <h2 id="start">3. 始め方</h2>
+<p>このフォルダは、デスクトップやドキュメントなど自分で書き込める場所に置いて使います（「Program Files」の中では動きません）。ログなどもこのフォルダの中の <code>data</code> に書くので、パソコンのほかの場所は汚しません。</p>
 <div class="step">
-  <h3><span class="num">1</span>ZIP を展開する</h3>
-  <p>ZIP を右クリック →「すべて展開」。デスクトップやドキュメントなど、自分で書き込める場所に展開してください。<br>
-  「Program Files」の中には置かないでください。</p>
+  <h3><span class="num">1</span>exe をダブルクリック</h3>
+  <p>このフォルダの <code>PLATEAU-Blender-Bridge.exe</code> をダブルクリックします。</p>
 </div>
 <div class="step">
-  <h3><span class="num">2</span>exe をダブルクリック</h3>
-  <p>展開したフォルダの <code>PLATEAU-Blender-Bridge.exe</code> をダブルクリックします。</p>
-</div>
-<div class="step">
-  <h3><span class="num">3</span>Windows の確認が出たら</h3>
+  <h3><span class="num">2</span>Windows の確認が出たら</h3>
   <p>初めて開く時、Windows が確認してくることがあります。配った人が分かっている ZIP なら、次のように進めてください。</p>
   <ul>
     <li>「開いているファイル - セキュリティの警告」→「<b>実行</b>」</li>
@@ -161,8 +157,7 @@
 
 <h2 id="trouble">7. 困った時</h2>
 <h3>「好きな街を3Dにしよう」という見出しの、灰色の1枚の画面が開いた</h3>
-<p>新しい画面を開けなかった時の予備の画面です。そのまま使えますが、次のフォルダにある <code>gui-fallback-（日付）.log</code> を配った人に送ってください。</p>
-<p><span class="path">%LOCALAPPDATA%\PLATEAU-Blender-Bridge\logs</span><br>（エクスプローラーのアドレス欄にこの1行を貼り付けて Enter で開けます）</p>
+<p>新しい画面を開けなかった時の予備の画面です。そのまま使えますが、このフォルダの <code>data</code> → <code>logs</code> にある <code>gui-fallback-（日付）.log</code> を配った人に送ってください。</p>
 <h3>「この場所にはデータがありません」と出る</h3>
 <p>PLATEAU の建物データがまだ無い地域です。「有名な場所から選ぶ」か、別の場所を試してください。</p>
 <h3>Blender が見つからないと言われる</h3>
@@ -181,7 +176,8 @@
 </ul>
 
 <h2 id="cleanup">9. 片付け方</h2>
-<p>展開したフォルダを消すだけです。設定やログは <span class="path">%LOCALAPPDATA%\PLATEAU-Blender-Bridge</span> に残るので、要らなければこちらも消してください。</p>
+<p>このフォルダを消すだけです。ログなども中の <code>data</code> にあるので、一緒に消えます。作った街は、3つ目の質問で選んだ保存先に残ります。</p>
+<p>前の版（2026年11月5日までに配った物）を使ったことがある人は、<span class="path">%LOCALAPPDATA%\PLATEAU-Blender-Bridge</span> が残っています。要らなければ消してください（エクスプローラーのアドレス欄にこの1行を貼り付けて Enter で開けます）。</p>
 
 <footer>
   この道具に同梱しているソフトウェアのライセンスは、同じフォルダの <code>THIRD_PARTY_LICENSES.txt</code> にまとめています。<br>

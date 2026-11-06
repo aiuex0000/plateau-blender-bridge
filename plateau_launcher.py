@@ -1,7 +1,6 @@
 """Frozen application entrypoint; never installs Python or executes tests at startup."""
 from __future__ import annotations
 import json
-import os
 from pathlib import Path
 import sys
 import traceback
@@ -44,8 +43,9 @@ def self_check(destination: Path) -> int:
 
 
 def report_crash(error: BaseException) -> None:
-    home=Path(os.getenv('LOCALAPPDATA') or Path.home())/'PLATEAU-Blender-Bridge'/'logs'
     try:
+        from plateau_blend.app_paths import logs_dir
+        home=logs_dir()
         home.mkdir(parents=True,exist_ok=True)
         destination=home/f'crash-{datetime.now():%Y%m%d-%H%M%S}.log'
         destination.write_text(traceback.format_exc(),encoding='utf-8')

@@ -35,7 +35,7 @@ from .resources import enforce_budget, forecast
 from .runtime import CancelToken, CancelledError, hidden_process_kwargs
 from .smoke import run_smoke
 from .web_server import BridgeServer
-from . import __version__
+from . import __version__, app_paths
 
 MAPS_URL = 'https://www.google.com/maps'
 MAPS_POINT_URL = 'https://www.google.com/maps/@{lat},{lon},16z'
@@ -53,8 +53,7 @@ _EDGE_RELATIVE = Path('Microsoft') / 'Edge' / 'Application' / 'msedge.exe'
 
 
 def _fallback_dir() -> Path:
-    base = os.getenv('LOCALAPPDATA') or str(Path.home())
-    return Path(base) / 'PLATEAU-Blender-Bridge' / 'logs'
+    return app_paths.logs_dir()
 
 
 def write_fallback_log(reason, trace=None) -> Path | None:
@@ -999,8 +998,7 @@ def _find_edge(environment=None, registry_lookup=None) -> Path | None:
 
 
 def _edge_profile() -> Path:
-    base = os.getenv('LOCALAPPDATA') or str(Path.home())
-    return Path(base) / 'PLATEAU-Blender-Bridge' / 'edge-profile'
+    return app_paths.edge_profile_dir()
 
 
 def _edge_args(edge: Path, url: str, profile: Path, width: int, height: int) -> list[str]:
