@@ -1,7 +1,10 @@
 # v0.11.4 — GitHub配布とライセンス整備（未リリース、2026-11-06）
 
 - 本体をMIT Licenseとし、配布ZIPへのライセンス原文の同梱を設定。
-- EXEのReleaseは、nusamaiの依存ライブラリの再配布条件を確認するまで保留。
+- 同梱nusamaiから、Bridgeが使わない3D Tiles・MVT・MLT・PMTiles出力を外した。再配布条件を確認できない依存 `kv-extsort` は、これで配布物に入らない（`patches/nusamai-v0.1.19-drop-unused-sinks.patch`）。OBJ出力は池田市の372棟で頂点・面とも旧版と一致。
+- `build_nusamai.bat`：固定commitを照合し、2つのパッチを当てて `--locked` で毎回ビルドする。既存のexeがあっても作り直す。
+- nusamaiの依存部品の表示を、パッチ後の依存（Windows向けの通常依存）から作り直した（`packaging/make_nusamai_notices.py`）。MPL-2.0の部品は `option-ext` だけになった。
+- 説明書に、nusamaiのライセンス表示が `tools\nusamai` にあることを書いた。
 - 開発文書の内輪向けの呼称を役割名に変更。
 - GitHub公開向けにREADMEの利用手順・対象範囲・画面例を追加し、リポジトリのURLを記載。
 - Claude・Codexを活用した開発であることをREADMEと配布用の説明書に明記。

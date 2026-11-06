@@ -28,7 +28,7 @@
 
 画面は作成時点のものです。詳しい操作と出典の書き方は、[利用者向けの説明書](packaging/user_docs/はじめにお読みください.txt)にあります。画像つきの `使い方ガイド.html` は配布フォルダ内で開いてください。
 
-このリポジトリにはソースコードを置いています。GitHubの「Code → Download ZIP」はソースの取得用で、実行ファイルの配布ZIPとは異なります。実行ファイル入りの配布ZIPは [Releases](https://github.com/aiuex0000/plateau-blender-bridge/releases) で配布する予定です。現在は同梱ソフトウェアの再配布条件を確認中で、EXEのReleaseはまだありません。
+このリポジトリにはソースコードを置いています。GitHubの「Code → Download ZIP」はソースの取得用で、実行ファイルの配布ZIPとは異なります。実行ファイル入りの配布ZIPは [Releases](https://github.com/aiuex0000/plateau-blender-bridge/releases) で配布する予定です。EXEのReleaseはまだありません（公開準備中）。
 
 ### できることと対象範囲
 

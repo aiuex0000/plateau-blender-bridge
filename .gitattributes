@@ -1,0 +1,2 @@
+# nusamai patches are applied with git apply; keep their bytes as written.
+*.patch -text
