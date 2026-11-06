@@ -26,5 +26,7 @@ cargo build --release --locked -p nusamai --manifest-path "%SRC%\Cargo.toml"
 if errorlevel 1 exit /b 1
 if not exist "tools\nusamai" mkdir "tools\nusamai"
 copy /y "%SRC%\target\release\nusamai.exe" "tools\nusamai\nusamai.exe" >nul
+if errorlevel 1 (echo Could not replace tools\nusamai\nusamai.exe; is it in use?& exit /b 1)
 copy /y "%SRC%\LICENSE" "tools\nusamai\LICENSE-nusamai.txt" >nul
+if errorlevel 1 exit /b 1
 echo nusamai %NUSAMAI_TAG% (%NUSAMAI_COMMIT%, patched) built into tools\nusamai

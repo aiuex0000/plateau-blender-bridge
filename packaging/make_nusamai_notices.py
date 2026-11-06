@@ -27,6 +27,36 @@ TARGET = 'x86_64-pc-windows-msvc'
 LICENSE_NAME = re.compile(r'^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT|AUTHORS)(\.|$|[-_])', re.I)
 BLOCKED = {'kv-extsort'}
 
+# Published packages that declare MIT but ship no license file. The notice line and where it
+# was taken from are recorded here; anything else without a file must offer Apache-2.0.
+MIT_NOTICES = {
+    'fax': ('Copyright © 2021 The pdf-rs contributors.',
+            'upstream LICENSE, https://github.com/pdf-rs/fax'),
+    'fax_derive': ('Copyright © 2021 The pdf-rs contributors.',
+                   'upstream LICENSE, https://github.com/pdf-rs/fax'),
+    'simd_helpers': ('Copyright (c) 2019 Luca Barbato',
+                     'upstream LICENSE, https://github.com/lu-zero/simd_helpers'),
+    'seahash': ('Copyright (c) ticki, Tom Almeida',
+                'Cargo.toml authors; the upstream LICENSE could not be retrieved'),
+    'jprect': ('Copyright (c) Taku Fukada',
+               'crates.io owner; neither the package nor https://github.com/ciscorn/jprect-rs '
+               'states a copyright line'),
+}
+MIT_TEXT = '''Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.'''
+
 
 def cargo_metadata(src: Path) -> dict:
     out = subprocess.run(
@@ -72,6 +102,13 @@ def lock_checksum(lock_text: str, name: str, version: str) -> str | None:
     return block.group(1) if block else None
 
 
+def _entry(name: str) -> zipfile.ZipInfo:
+    """Fixed timestamp so an unchanged archive regenerates byte-for-byte."""
+    info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description='Regenerate the bundled nusamai license notices.')
     ap.add_argument('src', type=Path, help='patched plateau-gis-converter checkout')
@@ -92,13 +129,37 @@ def main() -> int:
         return 1
 
     files = {p['id']: license_files(p) for p in pkgs}
-    unresolved = [p for p in pkgs if p['id'] not in members
-                  and not p.get('license') and not files[p['id']]]
+    # A third-party package without its own license file is covered either by electing its
+    # Apache-2.0 option (full text below) or by a recorded MIT notice; otherwise stop.
+    apache_elected, mit_filled, unresolved = [], [], []
+    for p in pkgs:
+        if p['id'] in members or files[p['id']]:
+            continue
+        expr = p.get('license') or ''
+        if 'Apache-2.0' in expr:
+            apache_elected.append(p)
+        elif expr == 'MIT' and p['name'] in MIT_NOTICES:
+            mit_filled.append(p)
+        else:
+            unresolved.append(p)
     if unresolved:
         for p in unresolved:
-            print(f"no license metadata or file: {p['name']} {p['version']} ({p['source']})",
-                  file=sys.stderr)
+            print(f"no license file and no recorded notice: {p['name']} {p['version']} "
+                  f"({p.get('license')}; {p['source']})", file=sys.stderr)
         return 1
+    apache_text = None
+    if apache_elected:
+        for p in pkgs:
+            for f in files[p['id']]:
+                text = f.read_text(encoding='utf-8', errors='replace')
+                if 'Apache License' in text and 'TERMS AND CONDITIONS FOR USE, REPRODUCTION' in text:
+                    apache_text = (p, f, text)
+                    break
+            if apache_text:
+                break
+        if apache_text is None:
+            print('Apache-2.0 full text not found in the resolved sources', file=sys.stderr)
+            return 1
 
     lines = [
         'nusamai v0.1.19 (PLATEAU Blender Bridge build) — Third-party license and notice inventory',
@@ -148,6 +209,25 @@ def main() -> int:
             lines += ['', '-' * 72, f"{p['name']} {p['version']} — {f.name}",
                       f'SHA-256 (original file): {hashlib.sha256(data).hexdigest()}', '-' * 72, body]
 
+    if mit_filled or apache_elected:
+        lines += ['', 'PACKAGES PUBLISHED WITHOUT A LICENSE FILE', '=' * 72,
+                  'These packages declare their license in Cargo.toml but their published source has',
+                  'no license file. The license text is supplied here.']
+    for p in mit_filled:
+        notice_line, origin = MIT_NOTICES[p['name']]
+        lines += ['', '-' * 72, f"{p['name']} {p['version']} — MIT License",
+                  f'Copyright notice source: {origin}', '-' * 72,
+                  'MIT License', '', notice_line, '', MIT_TEXT]
+    if apache_elected:
+        assert apache_text is not None
+        src_pkg, src_file, text = apache_text
+        body = '\n'.join(line.rstrip() for line in text.replace('\r\n', '\n').strip().split('\n'))
+        lines += ['', '-' * 72,
+                  'Used under Apache License 2.0 (one of the offered licenses), full text below:']
+        lines += [f"  {p['name']} {p['version']} ({p['license']})" for p in apache_elected]
+        lines += [f"Text taken from {src_pkg['name']} {src_pkg['version']} — {src_file.name}",
+                  '-' * 72, body]
+
     out = opt.out
     out.mkdir(parents=True, exist_ok=True)
     notice = out / 'THIRD_PARTY_LICENSES-nusamai.txt'
@@ -175,7 +255,7 @@ def main() -> int:
             if lock_checksum(lock_text, p['name'], p['version']) != digest:
                 print(f"Cargo.lock checksum mismatch: {p['name']} {p['version']}", file=sys.stderr)
                 return 1
-            zf.write(crate, crate.name)
+            zf.writestr(_entry(crate.name), crate.read_bytes())
             readme.append(f"{crate.name}  SHA-256 {digest}  https://crates.io/crates/{p['name']}/{p['version']}")
             for f in files[p['id']]:
                 text = f.read_text(encoding='utf-8', errors='replace')
@@ -184,8 +264,8 @@ def main() -> int:
         if mpl_text is None:
             print('MPL-2.0 license text not found in the MPL packages', file=sys.stderr)
             return 1
-        zf.writestr('README.txt', '\n'.join(readme) + '\n')
-        zf.writestr('MPL-2.0.txt', mpl_text)
+        zf.writestr(_entry('README.txt'), '\n'.join(readme) + '\n')
+        zf.writestr(_entry('MPL-2.0.txt'), mpl_text)
     print(f'{zip_path}: {len(mpl)} MPL archives')
     return 0
 
