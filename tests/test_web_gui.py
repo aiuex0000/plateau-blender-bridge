@@ -96,6 +96,14 @@ class RequestFromFormTests(BridgeTestCase):
         self.assertEqual(keep.condition,
                          center_condition('35.6586, 139.7454, 300', default_size_m=400.0))
 
+    def test_auto_name_is_opt_in_and_keeps_the_requested_path_by_default(self):
+        requested = request_from_form(self.form(place_name='東京タワー'))
+        self.assertEqual(requested.output_blend, self.output.resolve())
+
+        named = request_from_form(self.form(place_name='東京タワー', auto_name=True))
+        self.assertEqual(named.output_blend.name, '東京タワー_400m.blend')
+        self.assertEqual(named.output_blend.parent, self.output.resolve().parent)
+
     def test_bad_input_raises_value_error(self):
         for form in (self.form(area=''), self.form(size='huge'), self.form(zoom='abc'),
                      self.form(mode='nonsense')):
@@ -241,6 +249,63 @@ class PlanTests(BridgeTestCase):
                                             area='139.74, 35.65, 139.75, 35.66'))['area'],
                          '入力した範囲')
 
+    def test_plan_uses_the_preset_name_and_actual_size_for_auto_naming(self):
+        api = BridgeApi()
+        plan = api.plan(self.form(place_name='東京タワー', auto_name=True))
+        self.assertEqual(plan['output_name'], '東京タワー_400m.blend')
+        self.assertEqual(Path(plan['output']).parent, self.output.resolve().parent)
+
+        explicit = api.plan(self.form(place_name='東京タワー',
+                                      area='35.6586, 139.7454, 300',
+                                      size='input', auto_name=True))
+        self.assertEqual(explicit['output_name'], '東京タワー_300m.blend')
+
+    def test_auto_name_keeps_scene_blend_for_unnamed_or_non_center_forms(self):
+        api = BridgeApi()
+        cases = [
+            {},
+            {'place_name': '東京タワー'},
+            {'auto_name': True},
+            {'auto_name': True, 'place_name': '東京タワー', 'mode': 'bbox',
+             'area': '139.74, 35.65, 139.75, 35.66'},
+            {'auto_name': True, 'place_name': '東京タワー', 'mode': 'mesh',
+             'area': '5235 36'},
+        ]
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                self.assertEqual(api.plan(self.form(**overrides))['output_name'],
+                                 'scene.blend')
+
+    def test_auto_name_sanitizes_reserved_and_bounded_windows_names(self):
+        api = BridgeApi()
+        self.assertEqual(api.plan(self.form(place_name='東京/タワー',
+                                            auto_name=True))['output_name'],
+                         '東京_タワー_400m.blend')
+        self.assertEqual(api.plan(self.form(place_name='CON.東京',
+                                            auto_name=True))['output_name'],
+                         'CON_東京_400m.blend')
+        self.assertEqual(api.plan(self.form(place_name='...',
+                                            auto_name=True))['output_name'],
+                         'scene.blend')
+        name = api.plan(self.form(place_name='東' * 200,
+                                  auto_name=True))['output_name']
+        self.assertLessEqual(len(name), 120)
+        self.assertTrue(name.endswith('_400m.blend'))
+        self.assertIn('東', name)
+
+    def test_explicit_name_wins_even_when_it_is_scene_blend(self):
+        api = BridgeApi()
+        self.assertEqual(api.plan(self.form(place_name='東京タワー',
+                                            auto_name=False))['output_name'],
+                         'scene.blend')
+        self.assertEqual(api.plan(self.form(place_name='東京タワー', size='800',
+                                            auto_name=False))['output_name'],
+                         'scene.blend')
+        named = Path(self._tmp.name) / '私の街.blend'
+        self.assertEqual(api.plan(self.form(output=str(named), place_name='東京タワー',
+                                            auto_name=False))['output_name'],
+                         '私の街.blend')
+
 
 class GenerateTests(BridgeTestCase):
     def test_second_start_is_ignored_while_running(self):
@@ -338,6 +403,49 @@ class GenerateTests(BridgeTestCase):
         self.assertIsInstance(done, dict)
         self.assertEqual(done['output'], str(self.output.resolve()))
 
+    def test_plan_and_generation_agree_on_the_automatic_name(self):
+        api = BridgeApi()
+        form = self.form(place_name='東京タワー', auto_name=True)
+        plan = api.plan(form)
+        seen = []
+
+        def fake_generate(request, *, log, cancel):
+            seen.append(request.output_blend)
+            return Path(request.output_blend)
+
+        with patch.object(web_gui, 'generate', fake_generate):
+            started = api.start_generate(form)
+            self.assertTrue(started['started'])
+            events = self.collect(api, 'done')
+
+        self.assertEqual(seen, [Path(plan['output'])])
+        done = [event for event in events if event['kind'] == 'done'][0]['data']
+        self.assertEqual(done['output'], plan['output'])
+
+    def test_automatic_name_collision_is_resolved_in_plan_and_generation(self):
+        api = BridgeApi()
+        form = self.form(place_name='東京タワー', auto_name=True)
+        first = api.plan(form)
+        self.assertEqual(first['output_name'], '東京タワー_400m.blend')
+        Path(first['output']).write_bytes(b'x')
+
+        renamed = api.plan(form)
+        self.assertTrue(renamed['renamed'])
+        self.assertEqual(renamed['output_name'], '東京タワー_400m_2.blend')
+
+        seen = []
+
+        def fake_generate(request, *, log, cancel):
+            seen.append(request.output_blend)
+            return Path(request.output_blend)
+
+        with patch.object(web_gui, 'generate', fake_generate):
+            started = api.start_generate(form)
+            self.assertTrue(started['started'])
+            self.collect(api, 'done')
+
+        self.assertEqual(seen, [Path(renamed['output'])])
+
     def test_cancel_surfaces_as_cancelled_not_error(self):
         api = BridgeApi()
         entered = threading.Event()
@@ -390,6 +498,61 @@ class OpenUrlTests(BridgeTestCase):
             self.assertEqual(opened.call_args[0][0], web_gui.MAPS_URL)
             self.assertTrue(api.open_url('maps', 'x', 'y'))
             self.assertEqual(opened.call_args[0][0], web_gui.MAPS_URL)
+
+
+class OpenResultTests(BridgeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.api = BridgeApi()
+        self.api._result = self.output
+
+    def test_no_generated_result_returns_an_error(self):
+        self.api._result = None
+        result = self.api.open_result()
+        self.assertFalse(result['ok'])
+        self.assertIn('開く生成結果がありません', result['error'])
+
+    def test_missing_result_file_returns_an_error_without_opening(self):
+        with patch('plateau_blend.runtime.open_with_default_app') as opener:
+            result = self.api.open_result()
+        self.assertFalse(result['ok'])
+        self.assertIn('保存した .blend が見つかりません', result['error'])
+        self.assertIn(str(self.output), result['error'])
+        opener.assert_not_called()
+
+    def test_windows_opens_saved_path_with_the_default_app(self):
+        output = self.output.with_name('東京の 街.blend')
+        output.write_bytes(b'blend')
+        self.api._result = output
+        self.api._form = {'blender': str(output.with_name('old-blender.exe'))}
+        with (patch('plateau_blend.runtime.sys.platform', 'win32'),
+              patch('plateau_blend.runtime.os.startfile', create=True) as startfile):
+            result = self.api.open_result()
+        self.assertEqual(result, {'ok': True})
+        startfile.assert_called_once_with(str(output))
+
+    def test_missing_association_leaves_the_saved_file_and_folder_available(self):
+        self.output.write_bytes(b'blend')
+        error = OSError('No association')
+        error.winerror = 1155
+        with (patch('plateau_blend.runtime.sys.platform', 'win32'),
+              patch('plateau_blend.runtime.os.startfile', create=True) as startfile):
+            startfile.side_effect = [error, None]
+            result = self.api.open_result()
+            self.assertFalse(result['ok'])
+            self.assertIn('既定のアプリで Blender を選んでください', result['error'])
+            self.assertTrue(self.api.open_folder())
+            startfile.assert_called_with(str(self.output.parent))
+        self.assertEqual(self.output.read_bytes(), b'blend')
+
+    def test_os_error_is_returned_to_the_caller(self):
+        self.output.write_bytes(b'blend')
+        with patch('plateau_blend.runtime.open_with_default_app',
+                   side_effect=PermissionError('アクセス拒否')):
+            result = self.api.open_result()
+        self.assertFalse(result['ok'])
+        self.assertIn('保存した .blend を開けませんでした', result['error'])
+        self.assertIn('アクセス拒否', result['error'])
 
 
 class BlenderStatusTests(BridgeTestCase):
@@ -630,6 +793,96 @@ class EdgeAndFallbackTests(BridgeTestCase):
         text = written.read_text(encoding='utf-8')
         self.assertIn('理由です', text)
         self.assertIn('traceです', text)
+
+
+class GenerateRecoveryTests(BridgeTestCase):
+    def error_data(self, exc):
+        api = BridgeApi()
+
+        def fake_generate(request, *, log, cancel):
+            raise exc
+
+        with patch.object(web_gui, 'generate', fake_generate):
+            self.assertTrue(api.start_generate(self.form())['started'])
+            events = self.collect(api, 'error')
+        return [event['data'] for event in events if event['kind'] == 'error'][0]
+
+    def test_missing_data_points_to_the_place_step(self):
+        data = self.error_data(NoPlateauData())
+        self.assertEqual(data['recovery'], 'place')
+        self.assertEqual(data['message'], str(NoPlateauData()))
+
+    def test_output_write_permission_points_to_the_save_step(self):
+        for target in (self.output, self.output.parent, self.output.with_suffix('.work') / 'auto' / 'city.gml'):
+            with self.subTest(target=target):
+                data = self.error_data(PermissionError(13, 'denied', str(target)))
+                self.assertEqual(data['recovery'], 'output')
+                self.assertTrue(data['message'])
+
+    def test_disk_full_at_output_is_also_output(self):
+        data = self.error_data(OSError(28, 'no space', str(self.output)))
+        self.assertEqual(data['recovery'], 'output')
+
+    def test_unrelated_permission_is_unknown(self):
+        target = self.output.parent / 'unrelated-tool.exe'
+        data = self.error_data(PermissionError(13, 'denied', str(target)))
+        self.assertEqual(data['recovery'], 'unknown')
+
+
+class RangePreviewTests(BridgeTestCase):
+    """固定の地理院タイルプレビュー。取得や生成には触れない。"""
+
+    def test_center_400_and_800_agree_with_their_bbox_geometry(self):
+        api = BridgeApi()
+        spans = []
+        for size in (400, 800):
+            with self.subTest(size=size):
+                form = self.form(size=str(size))
+                center = api.range_preview(form)
+                area = request_from_form(form).condition.removeprefix('r:')
+                box = api.range_preview(self.form(mode='bbox', area=area))
+                self.assertTrue(center['ok'])
+                self.assertEqual({**center, 'mode': 'bbox'}, box)
+                bounds = center['bounds']
+                spans.append(bounds['east'] - bounds['west'])
+        self.assertAlmostEqual(spans[1], 2 * spans[0], delta=0.00001)
+
+    def test_tiles_are_capped_and_positions_are_valid(self):
+        result = BridgeApi().range_preview(
+            self.form(mode='bbox', area='139.70,35.60,139.90,35.80'))
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['viewport'], {'width': 512, 'height': 320})
+        self.assertLessEqual(len(result['tiles']), 9)
+        self.assertGreater(len(result['tiles']), 0)
+        limit = 1 << result['zoom']
+        for tile in result['tiles']:
+            self.assertEqual(tile['z'], result['zoom'])
+            self.assertIsInstance(tile['x'], int)
+            self.assertIsInstance(tile['y'], int)
+            self.assertTrue(0 <= tile['x'] < limit)
+            self.assertTrue(0 <= tile['y'] < limit)
+        bounds = result['bounds']
+        self.assertLess(bounds['west'], bounds['east'])
+        self.assertLess(bounds['south'], bounds['north'])
+
+    def test_mesh_has_no_rectangle_preview(self):
+        result = BridgeApi().range_preview(self.form(mode='mesh', area='5235 36'))
+        self.assertFalse(result['ok'])
+        self.assertFalse(result['supported'])
+        self.assertIn('メッシュ', result['error'])
+
+    def test_invalid_bounds_return_a_friendly_error(self):
+        api = BridgeApi()
+        reversed_box = api.range_preview(
+            self.form(mode='bbox', area='139.75,35.65,139.74,35.66'))
+        self.assertFalse(reversed_box['ok'])
+        self.assertTrue(reversed_box['error'])
+        bad = api.range_preview(self.form(mode='bbox', area='139.74,35.65,nan,35.66'))
+        self.assertFalse(bad['ok'])
+        self.assertIn('有限', bad['error'])
+        outside = api.range_preview(self.form(mode='bbox', area='139,85,140,86'))
+        self.assertFalse(outside['ok'])
+        self.assertIn('表示範囲外', outside['error'])
 
 
 if __name__ == '__main__':

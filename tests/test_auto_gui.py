@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import tkinter as tk
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from plateau_blend.auto import center_condition
 from plateau_blend.auto_gui import (AutoGui, PLACE_PRESETS, free_output_path, user_error,
@@ -78,6 +79,17 @@ class AutoGuiHelperTests(unittest.TestCase):
         text=completion_message(Path(r'C:\Users\You\Documents\PLATEAU\scene_2.blend'))
         self.assertIn('作成できました',text)
         self.assertIn('scene_2.blend',text)
+
+    def test_open_result_offers_the_saved_folder_when_opening_fails(self):
+        gui = SimpleNamespace(last_result=Path('output') / 'scene.blend')
+        with (patch('plateau_blend.auto_gui.open_saved_blend',
+                    side_effect=OSError('関連付けエラー')) as open_blend,
+              patch('plateau_blend.auto_gui.messagebox.askyesno', return_value=True) as ask,
+              patch('plateau_blend.auto_gui.open_with_default_app') as open_folder):
+            AutoGui.open_result(gui)
+        open_blend.assert_called_once_with(gui.last_result)
+        self.assertIn('関連付けエラー', ask.call_args.args[1])
+        open_folder.assert_called_once_with(gui.last_result.parent)
 
     def test_dpi_awareness_helper_never_raises(self):
         self.assertIsInstance(enable_dpi_awareness(),bool)

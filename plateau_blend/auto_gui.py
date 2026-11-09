@@ -13,7 +13,10 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from .auto import AutoRequest, preview, generate
 from .discovery import blender_candidates, find_nusamai
-from .runtime import CancelToken, CancelledError, enable_dpi_awareness, hidden_process_kwargs
+from .runtime import (
+    CancelToken, CancelledError, enable_dpi_awareness, hidden_process_kwargs,
+    open_saved_blend, open_with_default_app,
+)
 from .diagnostics import inspect_environment
 from .resources import forecast, enforce_budget
 from .auto import projected_selection, center_condition
@@ -22,6 +25,7 @@ from .catalog import NoPlateauData
 from . import __version__
 
 BLENDER_DOWNLOAD_URL='https://www.blender.org/download/'
+OPEN_BLEND_LABEL='保存した .blend を開く'
 CENTER_LABEL='中心の 緯度, 経度（, 一辺m）'
 CENTER_HINT='例: 35.6896, 139.6917 （Googleマップで場所を右クリック→数字をクリックでコピー。一辺は下の選択を使用。矩形の4つの数字もOK）'
 PLACE_PRESETS=(
@@ -180,7 +184,7 @@ class AutoGui(tk.Tk):
         self.generate_button=ttk.Button(actions,text='3Dの街を作る',command=self.start_generate);self.generate_button.grid(row=0,column=0,sticky='ew')
         self.cancel_button=ttk.Button(actions,text='中止',command=self.cancel_running,state='disabled');self.cancel_button.grid(row=0,column=1,padx=(4,0))
         # Shown only after a result exists; full width below so it reads as the next step.
-        self.open_button=ttk.Button(actions,text='Blenderで街を開く',command=self.open_result,state='disabled',style='Primary.TButton')
+        self.open_button=ttk.Button(actions,text=OPEN_BLEND_LABEL,command=self.open_result,state='disabled',style='Primary.TButton')
         self.blender_link_button=ttk.Button(actions,text='Blenderを入手する（公式サイト）',command=lambda:webbrowser.open(BLENDER_DOWNLOAD_URL))
         self.blender_link_button.grid(row=2,column=0,columnspan=2,sticky='ew',pady=(6,0));self.blender_link_button.grid_remove()
         self.blender_var.trace_add('write',lambda *_:self.update_blender_link())
@@ -347,7 +351,7 @@ class AutoGui(tk.Tk):
             renamed='\n（同じ名前のファイルがあるので、上書きせず新しい名前で保存します）'
         if not messagebox.askyesno('作成内容の確認',f'場所: {self.area.get()}\n広さ: {self.size.get()}（入力欄に広さ・矩形がある場合はそちらを優先）\n保存先: {request.output_blend}{renamed}\n\n建物・地形・航空写真を取得して作成します。よろしいですか？'):
             return
-        self.last_result=None;self.result_kind=None;self.open_button.configure(state='disabled',text='Blenderで街を開く');self.open_button.grid_remove()
+        self.last_result=None;self.result_kind=None;self.open_button.configure(state='disabled',text=OPEN_BLEND_LABEL);self.open_button.grid_remove()
         def job(req):
             result=generate(req,log=self.queue_msg,cancel=self.cancel_token)
             self.queue.put(('result',str(result)))
@@ -402,10 +406,16 @@ class AutoGui(tk.Tk):
         threading.Thread(target=task,daemon=True).start()
 
     def open_result(self):
-        if not self.last_result:return
-        blender=Path(self.blender_var.get())
-        try:subprocess.Popen([str(blender),str(self.last_result)],**hidden_process_kwargs())
-        except OSError as exc:messagebox.showerror('起動失敗',str(exc))
+        result=self.last_result
+        if result is None:return
+        try:
+            open_saved_blend(result)
+        except OSError as exc:
+            if messagebox.askyesno('ファイルを開けませんでした',f'{exc}\n\n保存したフォルダを開きますか？'):
+                try:
+                    open_with_default_app(result.parent)
+                except OSError as folder_error:
+                    messagebox.showerror('フォルダを開けませんでした',str(folder_error))
 
     def open_legacy(self):
         if getattr(sys,'frozen',False):
@@ -458,7 +468,7 @@ class AutoGui(tk.Tk):
                         self.status.set(f'({self.generate_stage}/4) {STAGES[self.generate_stage-1][1]}…')
                 elif kind in ('result','smoke_result'):
                     self.last_result=Path(data);self.result_kind=kind
-                    self.open_button.configure(state='normal',text='Blenderで街を開く' if kind=='result' else '診断ファイルを開く')
+                    self.open_button.configure(state='normal',text=OPEN_BLEND_LABEL if kind=='result' else '診断ファイルを開く')
                     if not self.open_button.winfo_manager():self.open_button.grid(row=1,column=0,columnspan=2,sticky='ew',pady=(6,0))
                 else:
                     self.running=False;self.generate_stage=0;self.progress.stop()
@@ -475,7 +485,7 @@ class AutoGui(tk.Tk):
                     elif self.result_kind=='result' and self.last_result:
                         message=completion_message(self.last_result)
                         self.status.set(message)
-                        messagebox.showinfo('作成できました',f'{message}\n\n「Blenderで街を開く」から開けます。')
+                        messagebox.showinfo('作成できました',f'{message}\n\n「{OPEN_BLEND_LABEL}」から開けます。')
                         self.open_button.focus_set()
                     else:
                         self.status.set(data)

@@ -82,6 +82,22 @@
           <p class="qs" id="size-lead">広いほど時間がかかります。迷ったら真ん中の「標準」で大丈夫です。</p>
           <div class="sizes" id="sizes" role="radiogroup" aria-label="広さ"></div>
           <p class="note-box" id="size-fixed" hidden>広さは入力した範囲で決まります。</p>
+          <details class="more range-preview" id="range-preview" hidden>
+            <summary>地図で範囲を確認</summary>
+            <figure class="range-figure">
+              <div class="range-map" id="range-map" role="img"
+                   aria-label="選択した範囲の地図プレビュー" aria-describedby="range-caption">
+                <div class="range-tiles" id="range-tiles" aria-hidden="true"></div>
+                <div class="range-rect" id="range-rect" hidden></div>
+                <div class="range-center" id="range-center" hidden></div>
+              </div>
+              <figcaption id="range-caption">枠は指定した範囲、＋は中心です。地図は国土地理院の標準地図です。</figcaption>
+            </figure>
+            <div role="status"><p class="range-status" id="range-status" hidden></p></div>
+            <a class="range-source" id="range-source"
+               href="https://maps.gsi.go.jp/development/ichiran.html"
+               target="_blank" rel="noopener noreferrer">出典：国土地理院 地理院タイル一覧（新しいタブで開く）</a>
+          </details>
         </div>
 
         <div class="wz" data-wz="3" hidden>
@@ -128,8 +144,11 @@
         <p class="done-name" id="done-name" title="">—</p>
         <p class="done-folder" id="done-folder" title=""></p>
         <button type="button" class="next" id="btn-open-result">
-          <svg class="ic"><use href="#i-blender"/></svg>Blenderで街を開く
+          <svg class="ic"><use href="#i-blender"/></svg>保存した .blend を開く
         </button>
+        <div role="status" aria-atomic="true">
+          <p class="error" id="open-result-error" hidden></p>
+        </div>
         <div class="where">
           <button type="button" class="linkbtn" id="btn-open-folder">保存したフォルダを開く</button>
           　・　
@@ -149,7 +168,7 @@
 
       <section class="view message" id="view-failed" hidden>
         <div class="badge bad">✗</div>
-        <h1 class="q" id="failed-title">作れませんでした</h1>
+        <h1 class="q" id="failed-title" tabindex="-1" aria-describedby="failed-text">作れませんでした</h1>
         <p class="qs" id="failed-text"></p>
         <div class="message-actions">
           <button type="button" class="next" id="btn-retry-failed">もう一度作る</button>

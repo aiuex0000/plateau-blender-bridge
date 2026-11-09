@@ -22,6 +22,7 @@ const state = {
   blenderOk: false,
   advReturn: { view: 'input', step: 1 },
   plan: null,
+  planKey: null,
   saveKind: 'app',
   inspect: { ok: false, explicit_size_m: null, error: '' },
   placeRequest: null,
@@ -33,7 +34,7 @@ const state = {
     outputs: {}
   },
   form: {
-    mode: 'center', place_name: '', area: '', size: '400', output: '',
+    mode: 'center', place_name: '', area: '', size: '400', output: '', auto_name: true,
     blender: '', nusamai: '', epsg: 'AUTO', lod: 'textured_max_lod',
     zoom: '18', dem_res: '100', axis: 'auto', clip: true
   }
@@ -145,7 +146,7 @@ function handle(event) {
     case 'result': state.result = String(event.data == null ? '' : event.data); break;
     case 'smoke_result': appendLog('自己診断ファイル: ' + describe(event.data)); break;
     case 'done': onDone(event.data); break;
-    case 'error': onError(String(event.data == null ? '' : event.data)); break;
+    case 'error': onError(event.data); break;
     case 'cancelled': onCancelled(String(event.data == null ? '' : event.data)); break;
   }
 }
@@ -476,6 +477,7 @@ function paintSizeSelection() {
     button.classList.toggle('sel', selected);
     button.setAttribute('aria-checked', String(selected));
   });
+  refreshRangePreview();
 }
 
 function updateSizeView() {
@@ -490,23 +492,36 @@ function updateSizeView() {
 
 let planSeq = 0;
 
+function formKey() {
+  return JSON.stringify([
+    state.form.mode, state.form.place_name, state.form.area, state.form.size,
+    state.form.output, Boolean(state.form.auto_name)
+  ]);
+}
+
+function currentPlanPath() {
+  if (!state.plan || state.planKey !== formKey()) return null;
+  return state.plan.output || null;
+}
+
 async function refreshPlan() {
   const seq = ++planSeq;
+  const key = formKey();
   let plan;
   try {
     plan = await state.api.plan(state.form);
   } catch (error) {
-    if (seq === planSeq) showStartError('保存先を確認できませんでした: ' + error);
+    if (seq === planSeq && key === formKey()) showStartError('保存先を確認できませんでした: ' + error);
     return;
   }
-  if (seq !== planSeq) return;
+  if (seq !== planSeq || key !== formKey()) return;
   if (!plan || plan.error) {
     showStartError((plan && plan.error) || '保存先を確認できませんでした');
     return;
   }
   hideStartError();
   state.plan = plan;
-  state.form.output = plan.output;
+  state.planKey = key;
   $('output-name').textContent = plan.output_name || '—';
   $('output-name').title = plan.output || '';
   $('output-folder').textContent = plan.output_folder || '';
@@ -537,9 +552,11 @@ function paintSaveLocation(kind) {
 }
 
 async function chooseOutput() {
-  const picked = await state.api.choose_output(state.form.output);
+  const suggested = currentPlanPath() || state.form.output;
+  const picked = await state.api.choose_output(suggested);
   if (!picked) return;
   state.form.output = String(picked);
+  state.form.auto_name = false;
   paintSaveLocation('other');
   syncAdvanced();
   await refreshPlan();
@@ -586,6 +603,7 @@ function showStep(step) {
   $('btn-back').disabled = state.step === 1;
   updateSizeView();
   paintSizeSelection();
+  syncRangePreview();
   updateBanner();
   if (state.step === 3) refreshPlan();
 }
@@ -625,6 +643,7 @@ async function onNext() {
 async function startGeneration() {
   if (state.job || state.pending) return;
   $('btn-next').disabled = true;
+  const key = formKey();
   let plan;
   try {
     plan = await state.api.plan(state.form);
@@ -639,8 +658,8 @@ async function startGeneration() {
     return;
   }
   hideStartError();
-  state.form.output = plan.output;
   state.plan = plan;
+  state.planKey = key;
   state.result = null;
   let started;
   try {
@@ -676,6 +695,7 @@ function showView(view) {
   Object.entries(views).forEach(([name, id]) => { $(id).hidden = name !== view; });
   $('stepper').hidden = view !== 'input';
   $('nav').hidden = view !== 'input';
+  syncRangePreview();
   updateBanner();
 }
 
@@ -749,10 +769,37 @@ function onDone(data) {
     $('done-name').title = saved;
     $('done-folder').textContent = folderName(saved);
     $('done-folder').title = folderName(saved);
+    showOpenResultError('');
     showView('done');
     return;
   }
   appendLog('[DONE] ' + message);
+}
+
+function showOpenResultError(message) {
+  const error = $('open-result-error');
+  error.hidden = !message;
+  error.textContent = message;
+}
+
+async function openResult() {
+  const button = $('btn-open-result');
+  if (button.getAttribute('aria-disabled') === 'true') return;
+  const saved = state.result;
+  const fallback = '保存した .blend を開けませんでした。「保存したフォルダを開く」からファイルを確認してください。';
+  button.setAttribute('aria-disabled', 'true');
+  showOpenResultError('');
+  let message = '';
+  try {
+    const result = await state.api.open_result();
+    if (!result?.ok) message = result?.error || fallback;
+  } catch (error) {
+    appendLog('.blend を開く要求の結果を確認できませんでした: ' + error);
+    message = fallback;
+  } finally {
+    button.removeAttribute('aria-disabled');
+  }
+  if (state.result === saved) showOpenResultError(message);
 }
 
 function onCancelled(message) {
@@ -766,11 +813,15 @@ function onCancelled(message) {
   appendLog('[CANCELLED] ' + message);
 }
 
-function onError(message) {
+function onError(data) {
+  const message = typeof data === 'string' ? data
+    : String((data && data.message) || '');
+  const recovery = data && typeof data === 'object' ? String(data.recovery || '') : '';
   const job = state.job;
   finishJob();
   if (job && job.kind === 'generate') {
-    if (message.startsWith('この場所には')) {
+    paintRecovery(recovery);
+    if (recovery === 'place') {
       $('failed-title').textContent = message;
       $('failed-text').textContent = '';
     } else {
@@ -778,9 +829,18 @@ function onError(message) {
       $('failed-text').textContent = message;
     }
     showView('failed');
+    $('failed-title').focus();
     return;
   }
   appendLog('[ERROR] ' + message);
+}
+
+function paintRecovery(recovery) {
+  const button = $('btn-retry-failed');
+  const text = recovery === 'place' ? '場所を変える'
+    : recovery === 'output' ? '保存先を変える' : 'もう一度作る';
+  button.textContent = text;
+  button.dataset.recovery = recovery === 'place' || recovery === 'output' ? recovery : '';
 }
 
 function fileName(path) {
@@ -814,7 +874,7 @@ function closeAdvanced() {
 }
 
 function syncAdvanced() {
-  $('adv-output').value = state.form.output || '';
+  $('adv-output').value = currentPlanPath() || state.form.output || '';
   $('adv-blender').value = state.form.blender || '';
   $('adv-nusamai').value = state.form.nusamai || '';
   $('adv-epsg').value = state.form.epsg || 'AUTO';
@@ -836,7 +896,10 @@ async function runAdvancedJob(kind, call) {
 }
 
 function bindAdvanced() {
-  $('adv-output').addEventListener('input', event => { state.form.output = event.target.value; });
+  $('adv-output').addEventListener('input', event => {
+    state.form.output = event.target.value;
+    state.form.auto_name = false;
+  });
   $('adv-blender').addEventListener('input', event => {
     state.form.blender = event.target.value;
     updateBanner();
@@ -850,9 +913,11 @@ function bindAdvanced() {
   $('adv-clip').addEventListener('change', event => { state.form.clip = event.target.checked; });
 
   $('adv-output-browse').addEventListener('click', async () => {
-    const picked = await state.api.choose_output(state.form.output);
+    const suggested = currentPlanPath() || state.form.output;
+    const picked = await state.api.choose_output(suggested);
     if (!picked) return;
     state.form.output = String(picked);
+    state.form.auto_name = false;
     syncAdvanced();
   });
   $('adv-blender-browse').addEventListener('click', async () => {
@@ -966,7 +1031,7 @@ function bind() {
     button.addEventListener('click', openAdvanced);
   });
 
-  $('btn-open-result').addEventListener('click', () => state.api.open_result());
+  $('btn-open-result').addEventListener('click', openResult);
   $('btn-open-folder').addEventListener('click', () => state.api.open_folder());
   $('btn-again').addEventListener('click', () => {
     finishJob();
@@ -979,9 +1044,16 @@ function bind() {
     await goStep(3);
   });
   $('btn-retry-failed').addEventListener('click', async () => {
+    const recovery = $('btn-retry-failed').dataset.recovery || '';
     finishJob();
     showView('input');
+    if (recovery === 'place') {
+      showStep(1);
+      $('area-input').focus();
+      return;
+    }
     await goStep(3);
+    if (recovery === 'output') $('choose-output').focus();
   });
   $('btn-save-log').addEventListener('click', saveLog);
 
@@ -989,6 +1061,124 @@ function bind() {
   $('rescan').addEventListener('click', () => state.api.scan());
 
   bindAdvanced();
+  bindRangePreview();
+}
+
+/* ── 範囲プレビュー（国土地理院 地理院タイル） ─────────────────── */
+
+let rangeSequence = 0;
+
+const GSI_STD_TILE = 'https://cyberjapandata.gsi.go.jp/xyz/std/';
+
+function rangeVisible() {
+  return state.view === 'input' && state.step === 2 && state.form.mode !== 'mesh';
+}
+
+function syncRangePreview() {
+  const details = $('range-preview');
+  const visible = rangeVisible();
+  details.hidden = !visible;
+  if (!visible && details.open) {
+    details.open = false;
+    $('view-input').classList.remove('range-open');
+    rangeSequence++;
+  }
+}
+
+function refreshRangePreview() {
+  if (rangeVisible() && $('range-preview').open) renderRangePreview();
+}
+
+function showRangeError(text) {
+  const status = $('range-status');
+  status.hidden = false;
+  status.textContent = text;
+}
+
+function hideRangeError() {
+  const status = $('range-status');
+  status.hidden = true;
+  status.textContent = '';
+}
+
+function hideRangeLayers() {
+  $('range-tiles').replaceChildren();
+  $('range-rect').hidden = true;
+  $('range-center').hidden = true;
+}
+
+function rangePercent(value, total) {
+  return (value / total * 100) + '%';
+}
+
+function paintRange(data, seq) {
+  const { viewport, rect, center } = data;
+  const tiles = $('range-tiles');
+  let failed = false;
+  data.tiles.forEach(tile => {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.decoding = 'async';
+    img.style.left = rangePercent(tile.left, viewport.width);
+    img.style.top = rangePercent(tile.top, viewport.height);
+    img.style.width = rangePercent(tile.width, viewport.width);
+    img.style.height = rangePercent(tile.height, viewport.height);
+    img.addEventListener('error', () => {
+      img.hidden = true;
+      if (failed || seq !== rangeSequence || !$('range-preview').open) return;
+      failed = true;
+      showRangeError('地図タイルを読み込めませんでした。範囲の枠はそのまま使えます。');
+    });
+    img.src = GSI_STD_TILE + tile.z + '/' + tile.x + '/' + tile.y + '.png';
+    tiles.appendChild(img);
+  });
+  const box = $('range-rect');
+  box.hidden = false;
+  box.style.left = rangePercent(rect.left, viewport.width);
+  box.style.top = rangePercent(rect.top, viewport.height);
+  box.style.width = rangePercent(rect.width, viewport.width);
+  box.style.height = rangePercent(rect.height, viewport.height);
+  const marker = $('range-center');
+  marker.hidden = false;
+  marker.style.left = rangePercent(center.x, viewport.width);
+  marker.style.top = rangePercent(center.y, viewport.height);
+}
+
+async function renderRangePreview() {
+  const details = $('range-preview');
+  const seq = ++rangeSequence;
+  hideRangeError();
+  hideRangeLayers();
+  let data;
+  try {
+    data = await state.api.range_preview(state.form);
+  } catch (error) {
+    if (seq !== rangeSequence || !details.open) return;
+    showRangeError('地図の範囲を確認できませんでした。広さの指定はそのまま使えます。');
+    return;
+  }
+  if (seq !== rangeSequence || !details.open) return;
+  if (!data || !data.ok) {
+    showRangeError((data && data.error) || 'この範囲では地図を表示できません。');
+    return;
+  }
+  paintRange(data, seq);
+}
+
+function bindRangePreview() {
+  const details = $('range-preview');
+  details.addEventListener('toggle', () => {
+    const open = details.open && rangeVisible();
+    $('view-input').classList.toggle('range-open', open);
+    if (!open) {
+      rangeSequence++;
+      hideRangeError();
+      hideRangeLayers();
+      return;
+    }
+    renderRangePreview();
+  });
 }
 
 bind();

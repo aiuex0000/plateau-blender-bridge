@@ -60,6 +60,26 @@ def hidden_process_kwargs() -> dict:
     return {'creationflags': subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
 
 
+def open_with_default_app(path: Path) -> None:
+    """Hand a file or folder to the operating system."""
+    if sys.platform == 'win32':
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    else:
+        opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
+        subprocess.Popen([opener, str(path)], **hidden_process_kwargs())
+
+
+def open_saved_blend(path: Path) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(f'保存した .blend が見つかりません（{path}）')
+    try:
+        open_with_default_app(path)
+    except OSError as exc:
+        if getattr(exc, 'winerror', None) == 1155:  # ERROR_NO_ASSOCIATION
+            raise OSError('Windowsで .blend を開くアプリが設定されていません。既定のアプリで Blender を選んでください。') from exc
+        raise OSError(f'保存した .blend を開けませんでした（{exc}）') from exc
+
+
 def _stop(proc: subprocess.Popen):
     if proc.poll() is not None:
         return

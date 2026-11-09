@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import dataclasses
+import errno
 import json
+import math
 import os
 import queue
 import re
@@ -31,11 +33,19 @@ from .auto import (AutoRequest, _is_lat, _is_lon, center_condition, generate, pr
 from .catalog import NoPlateauData
 from .diagnostics import inspect_environment
 from .discovery import blender_candidates, find_nusamai
+from .gsi import fractional_tile
 from .resources import enforce_budget, forecast
-from .runtime import CancelToken, CancelledError, hidden_process_kwargs
+from .runtime import (
+    CancelToken, CancelledError, hidden_process_kwargs, open_saved_blend, open_with_default_app,
+)
 from .smoke import run_smoke
 from .web_server import BridgeServer
 from . import __version__, app_paths
+
+RANGE_VIEW_WIDTH = 512
+RANGE_VIEW_HEIGHT = 320
+RANGE_TILE_SIZE = 256
+RANGE_MARGIN = 24
 
 MAPS_URL = 'https://www.google.com/maps'
 MAPS_POINT_URL = 'https://www.google.com/maps/@{lat},{lon},16z'
@@ -44,6 +54,7 @@ _APP_FOLDER_NAME = '作った街'
 _NUM = re.compile(r'-?\d+(?:\.\d+)?')
 _MAP_POINT = re.compile(r'@-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?')
 _DMS = re.compile(r'(\d+)\s*°\s*(\d+)\s*[\'′]\s*(\d+(?:\.\d+)?)\s*(?:"|″|\'\')?\s*([NSEW])')
+_UNSAFE_PLACE_NAME_CHARACTERS = re.compile(r'[.<>:"/\\|?*\x00-\x1f]')
 _GUI = None
 
 FIRST_CONTACT_TIMEOUT = 60.0
@@ -200,9 +211,7 @@ def _first_two_numbers(area) -> str:
     return ', '.join(numbers[:2])
 
 
-def request_from_form(form: dict, notes: list[str] | None = None) -> AutoRequest:
-    """画面の辞書から ``AutoRequest`` を作る（auto_gui.build_request と同じ規則）。"""
-    form = form or {}
+def _condition_from_form(form: dict, notes: list[str] | None = None) -> str:
     raw = str(form.get('area') or '').strip()
     if not raw:
         raise ValueError('地域または範囲を指定してください')
@@ -221,16 +230,28 @@ def request_from_form(form: dict, notes: list[str] | None = None) -> AutoRequest
             condition = center_condition(text, default_size_m=_size_m(size), notes=notes)
     else:
         raise ValueError('指定のしかたが不正です')
+    return condition
+
+
+def request_from_form(form: dict, notes: list[str] | None = None) -> AutoRequest:
+    """画面の辞書から ``AutoRequest`` を作る（auto_gui.build_request と同じ規則）。"""
+    form = form or {}
+    condition = _condition_from_form(form, notes)
     output = str(form.get('output') or '').strip()
     if not output:
         raise ValueError('保存先を指定してください')
+    output_path = Path(output).expanduser()
+    if form.get('auto_name') is True:
+        output_path = _auto_output_path(output_path, form)
+    else:
+        output_path = output_path.resolve()
     clip = form.get('clip', True)
     if isinstance(clip, str):
         clip = clip.strip().lower() not in ('', '0', 'false', 'off', 'no')
     return AutoRequest(
         condition=condition,
         epsg=str(form.get('epsg') or 'AUTO').strip() or 'AUTO',
-        output_blend=Path(output).expanduser().resolve(),
+        output_blend=output_path,
         blender_executable=_path_or_none(form.get('blender')),
         nusamai_executable=_path_or_none(form.get('nusamai')),
         lod=str(form.get('lod') or 'textured_max_lod'),
@@ -282,6 +303,16 @@ def _area_size_m(form: dict) -> float | None:
         return None
 
 
+def _auto_output_path(requested: Path, form: dict) -> Path:
+    size = _area_size_m(form)
+    place = unicodedata.normalize('NFC', str(form.get('place_name') or ''))
+    # Replace dots too so a name like CON.example cannot start with a device name.
+    name = _UNSAFE_PLACE_NAME_CHARACTERS.sub('_', place)[:100].strip(' _')
+    if size is None or not name:
+        return requested.resolve()
+    return requested.parent.resolve() / f'{name}_{size:g}m.blend'
+
+
 def _area_label(form: dict) -> str:
     if str(form.get('mode') or 'center') != 'center':
         return '入力した範囲'
@@ -302,6 +333,22 @@ def _japan_point(lat, lon) -> tuple[float, float] | None:
     if _is_lat(lat_f) and _is_lon(lon_f):
         return lat_f, lon_f
     return None
+
+
+def _generation_recovery(exc: Exception, output: Path) -> str:
+    if isinstance(exc, NoPlateauData):
+        return 'place'
+    if not isinstance(exc, OSError) or not exc.filename:
+        return 'unknown'
+    if not (isinstance(exc, PermissionError) or exc.errno == errno.ENOSPC
+            or getattr(exc, 'winerror', None) == 112):
+        return 'unknown'
+    target = Path(os.path.abspath(os.fsdecode(exc.filename)))
+    work = output.with_suffix('.work')
+    if (target in (output, output.parent, output.with_suffix('.provenance.json'))
+            or target.is_relative_to(work)):
+        return 'output'
+    return 'unknown'
 
 
 class BridgeApi:
@@ -407,6 +454,82 @@ class BridgeApi:
     def inspect_area(self, form: dict | None = None) -> dict:
         """1問目の形式検査（通信なし）。窓の JS からも同じ関数を呼ぶ。"""
         return inspect_area(form)
+
+    def range_preview(self, form: dict | None = None) -> dict:
+        """広さの指定から、地理院タイルの固定プレビュー用データを作る。
+
+        生成と同じ範囲指定を使い、ブラウザの 512x320 の表示枠に必要な
+        タイル座標を返す。
+        """
+        source = form if isinstance(form, dict) else self._form
+        mode = str(source.get('mode') or 'center')
+        if mode == 'mesh':
+            return {'ok': False, 'supported': False, 'mode': mode,
+                    'error': 'メッシュコードの指定では地図プレビューを使えません'}
+        failure = {'ok': False, 'supported': True, 'mode': mode}
+        try:
+            condition = _condition_from_form(source)
+        except ValueError as exc:
+            return {**failure, 'error': str(exc)}
+        try:
+            west, south, east, north = map(float, condition[2:].split(','))
+        except ValueError:
+            return {**failure, 'error': '範囲は西端、南端、東端、北端の順に数値で指定してください'}
+        if not all(math.isfinite(value) for value in (west, south, east, north)):
+            return {**failure, 'error': '範囲の座標は有限の数値で指定してください'}
+        if not (west < east and south < north):
+            return {**failure, 'error': '範囲は西端、南端、東端、北端の順に指定してください'}
+
+        try:
+            west_tile, north_tile = fractional_tile(west, north, 0)
+            east_tile, south_tile = fractional_tile(east, south, 0)
+        except ValueError:
+            return {**failure, 'error': '指定した座標は地図の表示範囲外です'}
+
+        limit_width = RANGE_VIEW_WIDTH - RANGE_MARGIN * 2
+        limit_height = RANGE_VIEW_HEIGHT - RANGE_MARGIN * 2
+
+        for zoom in range(18, 1, -1):
+            limit = 1 << zoom
+            scale = limit * RANGE_TILE_SIZE
+            width = (east_tile - west_tile) * scale
+            height = (south_tile - north_tile) * scale
+            if 0 < width <= limit_width and 0 < height <= limit_height:
+                break
+        else:
+            return {**failure, 'error': '指定した範囲を地図の表示枠に収められません'}
+
+        left = (west_tile + east_tile) / 2 * scale - RANGE_VIEW_WIDTH / 2
+        top = (north_tile + south_tile) / 2 * scale - RANGE_VIEW_HEIGHT / 2
+        x0 = math.floor(left / RANGE_TILE_SIZE)
+        x1 = math.ceil((left + RANGE_VIEW_WIDTH) / RANGE_TILE_SIZE) - 1
+        y0 = math.floor(top / RANGE_TILE_SIZE)
+        y1 = math.ceil((top + RANGE_VIEW_HEIGHT) / RANGE_TILE_SIZE) - 1
+        tiles = []
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if not (0 <= x < limit and 0 <= y < limit):
+                    continue
+                tiles.append({
+                    'z': zoom, 'x': x, 'y': y,
+                    'left': x * RANGE_TILE_SIZE - left,
+                    'top': y * RANGE_TILE_SIZE - top,
+                    'width': RANGE_TILE_SIZE, 'height': RANGE_TILE_SIZE,
+                })
+
+        return {
+            'ok': True,
+            'supported': True,
+            'mode': mode,
+            'zoom': zoom,
+            'viewport': {'width': RANGE_VIEW_WIDTH, 'height': RANGE_VIEW_HEIGHT},
+            'bounds': {'west': west, 'south': south, 'east': east, 'north': north},
+            'rect': {'left': (RANGE_VIEW_WIDTH - width) / 2,
+                     'top': (RANGE_VIEW_HEIGHT - height) / 2,
+                     'width': width, 'height': height},
+            'center': {'x': RANGE_VIEW_WIDTH / 2, 'y': RANGE_VIEW_HEIGHT / 2},
+            'tiles': tiles,
+        }
 
     def check_place(self, form: dict | None = None, request_id=None) -> dict:
         """カタログだけを見る（GMLは落とさない）。結果は ``place`` イベント。
@@ -551,7 +674,8 @@ class BridgeApi:
             except CancelledError:
                 self._finish('cancelled', gui.CANCELLED_MESSAGE, job=job)
             except Exception as exc:
-                self._finish('error', gui.user_error(exc), job=job)
+                self._finish('error', {'message': gui.user_error(exc),
+                                       'recovery': _generation_recovery(exc, request.output_blend)}, job=job)
             else:
                 self._finish('result', str(result), job=job)
                 self._finish('done', gui.completion_message(Path(str(result))),
@@ -574,30 +698,23 @@ class BridgeApi:
     def _blender_executable(self) -> Path | None:
         return _path_or_none(self._form.get('blender')) or self._scanned_blender
 
-    def open_result(self) -> bool:
-        if not self._result:
-            return False
-        blender = self._blender_executable()
-        if blender is None:
-            self._log('Blenderが見つかりません。詳細設定でBlender本体を指定してください。')
-            return False
+    def open_result(self) -> dict:
+        """Hand the saved .blend to the OS and return any launch error."""
+        result = self._result
         try:
-            subprocess.Popen([str(blender), str(self._result)], **hidden_process_kwargs())
+            if result is None:
+                raise FileNotFoundError('開く生成結果がありません。先に街の生成を完了してください。')
+            open_saved_blend(result)
         except OSError as exc:
-            self._log(f'Blenderを起動できませんでした: {exc}')
-            return False
-        return True
+            self._log(str(exc))
+            return {'ok': False, 'error': str(exc)}
+        return {'ok': True}
 
     def open_folder(self) -> bool:
         folder = self._result.parent if self._result else Path(
             str(self._form.get('output') or _default_output())).expanduser().parent
         try:
-            if sys.platform == 'win32':
-                os.startfile(str(folder))  # type: ignore[attr-defined]
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', str(folder)], **hidden_process_kwargs())
-            else:
-                subprocess.Popen(['xdg-open', str(folder)], **hidden_process_kwargs())
+            open_with_default_app(folder)
         except OSError as exc:
             self._log(f'フォルダを開けませんでした: {exc}')
             return False
@@ -879,11 +996,12 @@ class BridgeApi:
                 self._announced = 0
                 self._token = None
             data = {'message': str(message), 'output': output} if kind == 'done' else message
+            text = message.get('message') if isinstance(message, dict) else message
         self._emit(kind, data, job=job)
         if kind in ('done', 'error', 'cancelled'):
             with self._lock:
-                self._log_lines.append(f'[{kind.upper()}] {message}')
-            self._emit('log', f'[{kind.upper()}] {message}')
+                self._log_lines.append(f'[{kind.upper()}] {text}')
+            self._emit('log', f'[{kind.upper()}] {text}')
 
 
 def _index_path() -> Path:
