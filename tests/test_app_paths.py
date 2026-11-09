@@ -45,6 +45,23 @@ class DataDirTests(unittest.TestCase):
                     patch.object(app_paths.sys, 'executable', str(exe)):
                 self.assertEqual(app_paths.app_root(), exe.resolve().parent)
 
+    def test_edge_profile_uses_a_short_localappdata_path(self):
+        # Edge の描画プロセスは、プロファイルのパスが深いと起動できない。
+        # 凍結アプリの既定はアプリのフォルダではなく、短い LOCALAPPDATA の下。
+        with tempfile.TemporaryDirectory() as local, tempfile.TemporaryDirectory() as app:
+            with patch.dict('os.environ', {'LOCALAPPDATA': local}):
+                profile = app_paths.edge_profile_dir()
+            self.assertEqual(profile, Path(local) / 'PLATEAU-Blender-Bridge' / 'edge-profile')
+            self.assertLess(len(str(profile)), 100)
+            self.assertFalse(str(profile).startswith(app))
+
+    def test_edge_profile_falls_back_to_temp_without_localappdata(self):
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict('os.environ', {'LOCALAPPDATA': ''}), \
+                    patch.object(app_paths.tempfile, 'gettempdir', return_value=td):
+                self.assertEqual(app_paths.edge_profile_dir(),
+                                 Path(td) / 'PLATEAU-Blender-Bridge' / 'edge-profile')
+
 
 if __name__ == '__main__':
     unittest.main()
