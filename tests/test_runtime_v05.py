@@ -122,7 +122,7 @@ class V05Tests(unittest.TestCase):
                 token.cancel()
                 return []
             with self.assertRaises(CancelledError):
-                generate(req,cancel=token,catalogue_fetch=fetch)
+                generate(req,log=lambda _: None,cancel=token,catalogue_fetch=fetch)
             self.assertFalse((folder/'out.blend').exists())
 
 

@@ -110,7 +110,7 @@ class AutoTests(unittest.TestCase):
             b=root/'Blender Foundation'/'Blender 4.4'/'blender.exe';b.parent.mkdir(parents=True);b.write_text('')
             found=blender_candidates(environ={'ProgramFiles':str(root)},platform='linux')
             self.assertGreaterEqual(len(found),2)
-            self.assertEqual(found[0],a)
+            self.assertEqual(found[0],a.resolve())
 
     def test_full_auto_flow_offline_with_fake_blender(self):
         from plateau_blend.catalog import Source

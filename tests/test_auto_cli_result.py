@@ -80,7 +80,7 @@ class AutoCliResultTests(unittest.TestCase):
         self.assertIn('[SMOKE OK]', out)
 
     def test_generate_records_verify_json(self):
-        output = self.tmp / 'scene.blend'
+        output = (self.tmp / 'scene.blend').resolve()
         work = output.with_suffix('.work')
         work.mkdir()
         verify = work / 'verify_abc123.json'
@@ -92,7 +92,7 @@ class AutoCliResultTests(unittest.TestCase):
         data = self.load(target)
         self.assertTrue(data['ok'])
         self.assertEqual(Path(data['verify_json']), verify)
-        self.assertEqual(Path(data['output']), output.resolve())
+        self.assertEqual(Path(data['output']), output)
 
     def test_unwritable_result_path_keeps_exit_code(self):
         # An existing directory cannot be overwritten as a file.

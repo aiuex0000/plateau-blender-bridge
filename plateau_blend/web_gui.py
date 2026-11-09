@@ -345,8 +345,16 @@ def _generation_recovery(exc: Exception, output: Path) -> str:
         return 'unknown'
     target = Path(os.path.abspath(os.fsdecode(exc.filename)))
     work = output.with_suffix('.work')
-    if (target in (output, output.parent, output.with_suffix('.provenance.json'))
-            or target.is_relative_to(work)):
+    output_paths = (output, output.parent, output.with_suffix('.provenance.json'))
+    if target in output_paths or target.is_relative_to(work):
+        return 'output'
+    # The request path is resolved, but the error can still use an alias such
+    # as a Windows short path. Allow for a destination that could not be created.
+    try:
+        target = target.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return 'unknown'
+    if target in output_paths or target.is_relative_to(work):
         return 'output'
     return 'unknown'
 
