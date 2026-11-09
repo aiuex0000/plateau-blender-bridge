@@ -64,6 +64,6 @@ def edge_profile_dir(root: Path | None = None) -> Path:
     local = os.environ.get('LOCALAPPDATA')
     if local:
         candidate = Path(local) / _TEMP_FOLDER_NAME / 'edge-profile'
-        if len(str(candidate)) < 100 and _writable(candidate.parent):
+        if len(str(candidate)) < 100:
             return candidate
     return Path(tempfile.gettempdir()) / _TEMP_FOLDER_NAME / 'edge-profile'
