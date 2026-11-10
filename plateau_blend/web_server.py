@@ -51,6 +51,7 @@ class BridgeServer:
         self._lock = threading.Lock()
         self._last_contact: float | None = None
         self._bye_at: float | None = None
+        self._page_served_at: float | None = None
 
     # ── 起動・終了 ──────────────────────────────────────────────────
 
@@ -106,6 +107,17 @@ class BridgeServer:
         with self._lock:
             self._bye_at = time.monotonic()
 
+    def mark_page_served(self) -> None:
+        """画面（index.html）を返せた。API の連絡がまだでも、窓は開いている。"""
+        with self._lock:
+            if self._page_served_at is None:
+                self._page_served_at = time.monotonic()
+
+    @property
+    def page_served_at(self) -> float | None:
+        with self._lock:
+            return self._page_served_at
+
     @property
     def last_contact(self) -> float | None:
         with self._lock:
@@ -160,6 +172,8 @@ class _BridgeRequestHandler(BaseHTTPRequestHandler):
             return self._send_json(404, {'ok': False, 'error': 'not found'})
         content_type = _CONTENT_TYPES.get(target.suffix.lower(), 'application/octet-stream')
         self._send(200, body, content_type)
+        if name == 'index.html':
+            bridge.mark_page_served()
 
     # ── API ────────────────────────────────────────────────────────
 
@@ -232,8 +246,10 @@ class _BridgeRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
-        if status == 413:
-            self.send_header('Connection', 'close')
+        # 毎回閉じると明示する。AdGuard など 127.0.0.1 を中継するフィルタが、
+        # 閉じた接続を使い回して2回に1回 Failed to fetch になるのを防ぐ（2026-11-10 実機）。
+        self.send_header('Connection', 'close')
+        self.close_connection = True
         self.end_headers()
         if self.command != 'HEAD':
             try:

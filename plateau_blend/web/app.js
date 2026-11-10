@@ -23,6 +23,8 @@ const state = {
   advReturn: { view: 'input', step: 1 },
   plan: null,
   planKey: null,
+  planPending: false,
+  planAbort: null,
   saveKind: 'app',
   inspect: { ok: false, explicit_size_m: null, error: '' },
   placeRequest: null,
@@ -62,21 +64,70 @@ function makeApi() {
   return new Proxy({}, {
     get(_target, name) {
       if (typeof name !== 'string') return undefined;
-      return (...args) => callApi(name, args);
+      const timeout = name === 'choose_output' || name === 'choose_file' || name === 'save_log'
+        ? 0 : (name === 'poll' ? 5000 : 20000);
+      return (...args) => callApi(name, args, { timeout });
     }
   });
 }
 
-async function callApi(name, args) {
-  const response = await fetch('/api/' + name, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': TOKEN },
-    body: JSON.stringify({ args })
-  });
+// 何度呼んでも結果が変わらないAPI。通信が切れた時だけ1回やり直す。
+// AdGuard などのフィルタが 127.0.0.1 を中継すると、接続の使い回しで時々失敗するため。
+// 生成の開始・中止・ダイアログ・外部を開く操作は、二重に走ると困るので入れない。
+const RETRYABLE = new Set([
+  'initial_state', 'plan', 'poll', 'scan', 'check_place', 'inspect_area', 'range_preview',
+  'use_output_folder', 'blender_status', 'log_text'
+]);
+
+async function callApi(name, args, options = {}) {
+  try {
+    return await callApiOnce(name, args, options);
+  } catch (error) {
+    if (!(error instanceof TypeError) || !RETRYABLE.has(name)
+        || (options.signal && options.signal.aborted)) throw error;
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return await callApiOnce(name, args, options);
+  }
+}
+
+async function callApiOnce(name, args, options = {}) {
+  const controller = options.signal ? null : new AbortController();
+  const signal = options.signal || (controller && controller.signal);
+  const timeout = options.timeout === undefined ? 20000 : options.timeout;
+  const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
+  let response;
+  try {
+    response = await fetch('/api/' + name, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': TOKEN },
+      body: JSON.stringify({ args }),
+      signal
+    });
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error('通信がタイムアウトしました。ネットワークの状態を確認して、もう一度お試しください');
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   let payload = null;
   try { payload = await response.json(); } catch (error) { payload = null; }
   if (payload && payload.ok) return payload.result;
   throw new Error((payload && payload.error) || ('HTTP ' + response.status));
+}
+
+async function loadInitialState() {
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await state.api.initial_state();
+    } catch (error) {
+      last = error;
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  }
+  throw last;
 }
 
 async function start() {
@@ -84,7 +135,7 @@ async function start() {
   state.ready = true;
   state.api = makeApi();
   try {
-    const meta = await state.api.initial_state();
+    const meta = await loadInitialState();
     if (meta && typeof meta === 'object') state.meta = Object.assign(state.meta, meta);
     if (state.meta.title) document.title = state.meta.title;
   } catch (error) {
@@ -187,7 +238,9 @@ function finishJob() {
 function updateRunButtons() {
   const busy = Boolean(state.job || state.pending);
   ['adv-preview', 'adv-diagnose', 'adv-smoke'].forEach(id => { $(id).disabled = busy; });
-  $('btn-next').disabled = busy;
+  const planReady = state.step !== 3 ||
+    (Boolean(state.plan) && state.planKey === formKey() && !state.planPending);
+  $('btn-next').disabled = busy || !planReady;
 }
 
 /* ── 入力: 場所 ───────────────────────────────────────────────── */
@@ -505,21 +558,44 @@ function currentPlanPath() {
 }
 
 async function refreshPlan() {
+  if (state.planAbort) state.planAbort.abort();
+  const controller = new AbortController();
+  state.planAbort = controller;
+  const timer = setTimeout(() => controller.abort(), 10000);
   const seq = ++planSeq;
   const key = formKey();
+  state.planPending = true;
+  state.plan = null;
+  state.planKey = null;
+  $('retry-plan').hidden = true;
+  updateRunButtons();
   let plan;
   try {
-    plan = await state.api.plan(state.form);
+    plan = await callApi('plan', [state.form], { signal: controller.signal });
   } catch (error) {
-    if (seq === planSeq && key === formKey()) showStartError('保存先を確認できませんでした: ' + error);
+    clearTimeout(timer);
+    if (seq !== planSeq || key !== formKey()) return;
+    state.planPending = false;
+    state.planAbort = null;
+    updateRunButtons();
+    const text = error && error.name === 'AbortError'
+      ? '保存先の確認がタイムアウトしました' : String(error);
+    showStartError('保存先を確認できませんでした: ' + text);
+    $('retry-plan').hidden = false;
     return;
   }
+  clearTimeout(timer);
   if (seq !== planSeq || key !== formKey()) return;
+  state.planPending = false;
+  state.planAbort = null;
   if (!plan || plan.error) {
+    updateRunButtons();
     showStartError((plan && plan.error) || '保存先を確認できませんでした');
+    $('retry-plan').hidden = false;
     return;
   }
   hideStartError();
+  $('retry-plan').hidden = true;
   state.plan = plan;
   state.planKey = key;
   $('output-name').textContent = plan.output_name || '—';
@@ -530,8 +606,9 @@ async function refreshPlan() {
   $('summary-place').title = plan.place || '';
   $('summary-area').textContent = plan.area || '—';
   $('summary-area').title = plan.area || '';
-  $('rename-note').hidden = !plan.renamed;
-  $('rename-note').textContent = plan.rename_note || '';
+  $('rename-note').hidden = !(plan.renamed || plan.note);
+  $('rename-note').textContent = plan.rename_note || plan.note || '';
+  updateRunButtons();
 }
 
 function showStartError(text) {
@@ -542,6 +619,16 @@ function showStartError(text) {
 function hideStartError() {
   $('start-error').hidden = true;
   $('start-error').textContent = '';
+}
+
+function showRunError(text) {
+  $('run-error').hidden = false;
+  $('run-error').textContent = text;
+}
+
+function hideRunError() {
+  $('run-error').hidden = true;
+  $('run-error').textContent = '';
 }
 
 function paintSaveLocation(kind) {
@@ -605,6 +692,7 @@ function showStep(step) {
   paintSizeSelection();
   syncRangePreview();
   updateBanner();
+  updateRunButtons();
   if (state.step === 3) refreshPlan();
 }
 
@@ -642,24 +730,16 @@ async function onNext() {
 
 async function startGeneration() {
   if (state.job || state.pending) return;
-  $('btn-next').disabled = true;
   const key = formKey();
-  let plan;
-  try {
-    plan = await state.api.plan(state.form);
-  } catch (error) {
-    updateRunButtons();
-    showStartError('入力内容を確認できませんでした: ' + error);
+  if (!state.plan || state.planKey !== key || state.planPending) {
+    // 保存先が未確認のまま生成を始めない。確認だけして戻る。
+    await refreshPlan();
     return;
   }
-  if (!plan || plan.error) {
-    updateRunButtons();
-    showStartError((plan && plan.error) || '保存先を確認できませんでした');
-    return;
-  }
+  const plan = state.plan;
+  $('btn-next').disabled = true;
   hideStartError();
-  state.plan = plan;
-  state.planKey = key;
+  hideRunError();
   state.result = null;
   let started;
   try {
@@ -805,6 +885,7 @@ async function openResult() {
 function onCancelled(message) {
   const job = state.job;
   finishJob();
+  hideRunError();
   if (job && job.kind === 'generate') {
     $('cancelled-text').textContent = message || state.meta.cancelled_message || '';
     showView('cancelled');
@@ -1007,6 +1088,7 @@ function bind() {
     chooseSaveLocation(button.dataset.kind);
   });
   $('choose-output').addEventListener('click', chooseOutput);
+  $('retry-plan').addEventListener('click', refreshPlan);
   $('btn-next').addEventListener('click', onNext);
   $('btn-back').addEventListener('click', () => {
     if (state.step > 1) showStep(state.step - 1);
@@ -1023,8 +1105,21 @@ function bind() {
 
   $('btn-cancel').addEventListener('click', async () => {
     $('btn-cancel').disabled = true;
+    hideRunError();
     appendLog('中止しています…');
-    await state.api.cancel();
+    const jobId = state.job && state.job.id;
+    const fallback = setTimeout(() => {
+      if (state.job && state.job.id === jobId) {
+        onCancelled('中止の応答がありません。処理が続いている可能性があります。アプリを閉じてください。');
+      }
+    }, 5000);
+    try {
+      await state.api.cancel();
+    } catch (error) {
+      appendLog('中止を送れませんでした: ' + error);
+      $('btn-cancel').disabled = false;
+      showRunError('中止を送れませんでした。もう一度押すか、アプリを閉じてください。');
+    }
   });
   $('btn-run-log').addEventListener('click', openAdvanced);
   document.querySelectorAll('[data-open-log]').forEach(button => {

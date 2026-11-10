@@ -238,6 +238,15 @@ class PlanTests(BridgeTestCase):
     def test_plan_reports_input_errors_as_text(self):
         self.assertIn('error', BridgeApi().plan(self.form(area='')))
 
+    def test_plan_does_not_probe_a_network_output(self):
+        # OneDrive/ネットワーク上で exists が固まると、画面が Failed to fetch になる。
+        api = BridgeApi()
+        plan = api.plan(self.form(output=r'\\server\share\scene.blend'))
+        self.assertNotIn('error', plan)
+        self.assertFalse(plan['renamed'])
+        self.assertIn('ネットワーク', plan['note'])
+        self.assertEqual(plan['output'], r'\\server\share\scene.blend')
+
     def test_plan_reports_the_actual_area(self):
         api = BridgeApi()
         self.assertEqual(api.plan(self.form(size='400'))['area'], '400m')
@@ -469,10 +478,37 @@ class GenerateTests(BridgeTestCase):
         self.assertFalse(any(event['kind'] == 'error' for event in events))
         data = [event for event in events if event['kind'] == 'cancelled'][0]['data']
         self.assertEqual(data, CANCELLED_MESSAGE)
+        deadline = time.monotonic() + 2
+        while api.running and time.monotonic() < deadline:
+            time.sleep(0.01)
         self.assertFalse(api.running)
 
     def test_cancel_without_a_run_is_a_no_op(self):
         self.assertFalse(BridgeApi().cancel())
+
+    def test_cancel_shows_cancelled_before_the_worker_stops(self):
+        api = BridgeApi()
+        entered = threading.Event()
+        release = threading.Event()
+
+        def fake_generate(request, *, log, cancel):
+            entered.set()
+            release.wait(10)
+            return Path(request.output_blend)
+
+        with patch.object(web_gui, 'generate', fake_generate):
+            self.assertTrue(api.start_generate(self.form())['started'])
+            self.assertTrue(entered.wait(10))
+            self.assertTrue(api.cancel())
+            events = api.poll()
+            # 画面には即時に中止を返すが、workerはまだ止まっていない。
+            self.assertTrue(api.running)
+            release.set()
+            deadline = time.monotonic() + 2
+            while api.running and time.monotonic() < deadline:
+                time.sleep(0.01)
+        self.assertTrue(any(event['kind'] == 'cancelled' for event in events))
+        self.assertFalse(api.running)
 
 
 class OpenUrlTests(BridgeTestCase):
@@ -627,6 +663,42 @@ class OutputFolderTests(BridgeTestCase):
     def test_unknown_kind_is_refused(self):
         self.assertIsNone(BridgeApi().use_output_folder('other', 'scene.blend'))
 
+    def test_slow_documents_are_used_without_a_write_probe(self):
+        # OneDrive へリダイレクトされたドキュメント（Office PC 実機）。確認で HTTP を止めない。
+        api = BridgeApi()
+        documents = Path(self._tmp.name) / 'OneDrive' / 'Documents' / 'PLATEAU'
+        with patch.object(web_gui, '_documents_output', return_value=documents / 'scene.blend'), \
+             patch.object(web_gui.app_paths, 'is_slow_path', return_value=True), \
+             patch.object(web_gui.app_paths, 'writable_quick',
+                          side_effect=AssertionError('probe must be skipped')):
+            result = api.use_output_folder('documents', str(self.output))
+        self.assertNotIn('error', result)
+        self.assertEqual(result['output'], str(documents / 'scene.blend'))
+        self.assertIn('warning', result)
+
+    def test_probe_timeout_is_used_with_a_warning(self):
+        api = BridgeApi()
+        app = Path(self._tmp.name) / '作った街'
+        with patch.object(web_gui, '_app_folder', return_value=app), \
+             patch.object(web_gui.app_paths, 'writable_quick', return_value=None):
+            result = api.use_output_folder('app', str(self.output))
+        self.assertEqual((result['kind'], result['output']), ('app', str(app / 'scene.blend')))
+        self.assertIn('warning', result)
+
+    def test_switch_errors_are_returned_not_raised(self):
+        api = BridgeApi()
+        with patch.object(web_gui, '_app_folder', side_effect=OSError('boom')):
+            result = api.use_output_folder('app', str(self.output))
+        self.assertIn('boom', result['error'])
+
+    def test_default_does_not_probe_a_slow_app_folder(self):
+        app = Path(self._tmp.name) / 'OneDrive' / '作った街'
+        with patch.object(web_gui, '_app_folder', return_value=app), \
+             patch.object(web_gui.app_paths, 'is_slow_path', return_value=True), \
+             patch.object(web_gui.app_paths, 'writable_quick',
+                          side_effect=AssertionError('probe must be skipped')):
+            self.assertEqual(web_gui._default_kind(), 'documents')
+
 
 class SmokeTestTests(BridgeTestCase):
     def test_smoke_result_is_reported(self):
@@ -774,6 +846,27 @@ class EdgeAndFallbackTests(BridgeTestCase):
             200, 0, None, process=process, process_alive=False), 'failed')
         self.assertEqual(web_gui._session_outcome(
             61, 0, None, process=process, process_alive=True), 'failed')
+
+    def test_session_outcome_keeps_the_server_when_the_page_was_served(self):
+        # 画面は出ている。ここで止めると窓だけ残り、全操作が Failed to fetch になる。
+        self.assertEqual(web_gui._session_outcome(61, 0, None, page_served_at=5), 'wait')
+        self.assertEqual(web_gui._session_outcome(
+            61, 0, None, process=object(), process_alive=False, page_served_at=5), 'wait')
+        self.assertEqual(web_gui._session_outcome(181, 0, None, page_served_at=5), 'failed')
+        self.assertEqual(web_gui._session_outcome(61, 0, None, page_served_at=None), 'failed')
+
+    def test_server_ready_does_not_count_as_the_page(self):
+        api = BridgeApi()
+        web = Path(self._tmp.name) / 'web'
+        web.mkdir()
+        (web / 'index.html').write_text('<html></html>', encoding='utf-8')
+        (web / 'app.js').write_text('', encoding='utf-8')
+        from plateau_blend.web_server import BridgeServer
+        server = BridgeServer(api, web_dir=web)
+        server.start()
+        self.addCleanup(server.stop)
+        self.assertTrue(web_gui._server_ready(server.port, server.token))
+        self.assertIsNone(server.page_served_at)
 
     def test_session_outcome_closes_after_bye_unless_contact_returns(self):
         # 閉じた: 最後の連絡 10 → bye 11 → 3秒戻らない

@@ -85,6 +85,29 @@ class WebServerTests(unittest.TestCase):
 
     # ── 静的配信 ────────────────────────────────────────────────────
 
+    def test_every_response_says_connection_close(self):
+        # AdGuard などの中継が閉じた接続を使い回さないよう、毎回明示する。
+        for method, path in (('GET', '/app.js'), ('POST', '/api/missing')):
+            conn = http.client.HTTPConnection('127.0.0.1', self.server.port, timeout=5)
+            try:
+                conn.putrequest(method, path, skip_host=True)
+                conn.putheader('Host', self.host)
+                conn.putheader('X-Bridge-Token', 'test-token')
+                conn.putheader('Content-Length', '0')
+                conn.endheaders()
+                response = conn.getresponse()
+                response.read()
+                self.assertEqual(response.getheader('Connection'), 'close', path)
+            finally:
+                conn.close()
+
+    def test_page_served_is_marked_only_by_index(self):
+        self.get('/app.js')
+        self.assertIsNone(self.server.page_served_at)
+        status, _, _ = self.get('/')
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(self.server.page_served_at)
+
     def test_bye_is_recorded_without_counting_as_contact(self):
         self.assertIsNone(self.server.bye_at)
         status, payload = self.post('_bye', token='wrong')

@@ -83,7 +83,7 @@ def initial_geometry(screen_w:int,screen_h:int)->str:
 class AutoGui(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f'PLATEAU → Blender | 自動生成 v{__version__.rsplit(".",1)[0]}')
+        self.title(f'PLATEAU → Blender | 自動生成 v{__version__}')
         self.geometry(initial_geometry(self.winfo_screenwidth(),self.winfo_screenheight()))
         self.minsize(730,580)
         self._apply_scaling()

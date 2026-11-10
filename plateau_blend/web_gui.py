@@ -23,6 +23,7 @@ import threading
 import time
 import traceback
 import unicodedata
+import urllib.request
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -91,22 +92,29 @@ def _gui():
     return _GUI
 
 
+_UNCHECKED_OUTPUT_WARNING = ('このフォルダに書き込めるかは確認できませんでした'
+                             '（OneDrive・ネットワークなど）。このまま使います')
+
+
 def _documents_output() -> Path:
-    return Path.home() / 'Documents' / 'PLATEAU' / 'scene.blend'
+    return app_paths.documents_dir() / 'PLATEAU' / 'scene.blend'
 
 
 def _default_kind() -> str:
     """ポータブルアプリなので、既定はアプリのフォルダ。書けない時（Program Files など）だけドキュメント。
     ``作った街`` がまだ無ければ作らず、親（exe のフォルダ）に書けるかだけを見る。
-    もうあれば、それ自体がフォルダで書けるかを見る（同名のファイルや読み取り専用なら使わない）。"""
+    もうあれば、それ自体がフォルダで書けるかを見る（同名のファイルや読み取り専用なら使わない）。
+    OneDrive・ネットワーク上や、確認が期限内に終わらない時はドキュメントにする。"""
     folder = _app_folder()
-    if folder.exists():
+    if app_paths.is_slow_path(folder):
+        return 'documents'
+    if app_paths.exists_quick(folder):
         return 'app' if folder.is_dir() and _folder_writable(folder) else 'documents'
     return 'app' if _folder_writable(folder.parent) else 'documents'
 
 
-def _default_output() -> Path:
-    if _default_kind() == 'app':
+def _default_output(kind: str | None = None) -> Path:
+    if (kind or _default_kind()) == 'app':
         return _app_folder() / _documents_output().name
     return _documents_output()
 
@@ -141,22 +149,8 @@ def _existing_dir(folder: Path) -> str:
 
 
 def _folder_writable(folder: Path) -> bool:
-    """作れるか・書けるかを、実際に小さなファイルを置いて確かめる。"""
-    probe = None
-    try:
-        folder = folder.expanduser()
-        folder.mkdir(parents=True, exist_ok=True)
-        probe = folder / f'.plateau_write_{os.getpid()}_{threading.get_ident()}'
-        probe.write_bytes(b'')
-        return True
-    except OSError:
-        return False
-    finally:
-        if probe is not None:
-            try:
-                probe.unlink()
-            except OSError:
-                pass
+    """作れるか・書けるかを確かめる。期限内に分からなければ書けない扱い。"""
+    return app_paths.writable_quick(folder) is True
 
 
 def _as_int(value, default: int, label: str) -> int:
@@ -243,7 +237,7 @@ def request_from_form(form: dict, notes: list[str] | None = None) -> AutoRequest
     output_path = Path(output).expanduser()
     if form.get('auto_name') is True:
         output_path = _auto_output_path(output_path, form)
-    else:
+    elif not app_paths.is_slow_path(output_path):
         output_path = output_path.resolve()
     clip = form.get('clip', True)
     if isinstance(clip, str):
@@ -309,7 +303,9 @@ def _auto_output_path(requested: Path, form: dict) -> Path:
     # Replace dots too so a name like CON.example cannot start with a device name.
     name = _UNSAFE_PLACE_NAME_CHARACTERS.sub('_', place)[:100].strip(' _')
     if size is None or not name:
-        return requested.resolve()
+        return requested if app_paths.is_slow_path(requested) else requested.resolve()
+    if app_paths.is_slow_path(requested):
+        return requested.parent / f'{name}_{size:g}m.blend'
     return requested.parent.resolve() / f'{name}_{size:g}m.blend'
 
 
@@ -392,9 +388,10 @@ class BridgeApi:
 
     def initial_state(self) -> dict:
         gui = _gui()
+        default_kind = _default_kind()
         return {
             'version': __version__,
-            'title': f'PLATEAU → Blender | 自動生成 v{__version__.rsplit(".", 1)[0]}',
+            'title': f'PLATEAU → Blender | 自動生成 v{__version__}',
             'places': [{'name': name, 'coordinates': coordinates, 'size': size}
                        for name, coordinates, size in gui.PLACE_PRESETS],
             'sizes': [
@@ -412,8 +409,8 @@ class BridgeApi:
                 {'value': 'mesh', 'label': 'メッシュコード',
                  'hint': '例: 5235xxxx（6/8/9/10桁のメッシュ番号）'},
             ],
-            'default_output': str(_default_output()),
-            'default_kind': _default_kind(),
+            'default_output': str(_default_output(default_kind)),
+            'default_kind': default_kind,
             'outputs': self.output_choices(),
             'min_size': [730, 580],
             'cancelled_message': gui.CANCELLED_MESSAGE,
@@ -597,27 +594,33 @@ class BridgeApi:
         try:
             request = request_from_form(self._form, notes=notes)
             request.check()
+            requested = request.output_blend
+            if app_paths.is_slow_path(requested):
+                # OneDrive/ネットワーク上で exists が固まると、HTTPの応答が返らず
+                # 画面が「Failed to fetch」になる。名前の確認はせず、そのまま返す。
+                renamed = False
+                target = requested
+                notes.append('OneDrive/ネットワーク上の保存先は、確認に時間がかかることがあります')
+            else:
+                renamed = app_paths.exists_quick(requested)
+                target = app_paths.free_output_path_quick(requested) if renamed else requested
+            return {
+                'output': str(target),
+                'requested': str(requested),
+                'output_name': target.name,
+                'output_folder': str(target.parent),
+                'renamed': renamed,
+                'rename_note': (f'同じ名前のファイルがあるので、{target.name} で保存します'
+                                if renamed else ''),
+                'place': str(self._form.get('place_name') or self._form.get('area') or '').strip(),
+                'area': _area_label(self._form),
+                'area_m': _area_size_m(self._form),
+                'mode': str(self._form.get('mode') or 'center'),
+                'note': ' / '.join(notes),
+            }
         except Exception as exc:
-            return {'error': str(exc)}
-        requested = request.output_blend
-        target = requested
-        renamed = target.exists()
-        if renamed:
-            target = _gui().free_output_path(target)
-        return {
-            'output': str(target),
-            'requested': str(requested),
-            'output_name': target.name,
-            'output_folder': str(target.parent),
-            'renamed': renamed,
-            'rename_note': (f'同じ名前のファイルがあるので、{target.name} で保存します'
-                            if renamed else ''),
-            'place': str(self._form.get('place_name') or self._form.get('area') or '').strip(),
-            'area': _area_label(self._form),
-            'area_m': _area_size_m(self._form),
-            'mode': str(self._form.get('mode') or 'center'),
-            'note': notes[0] if notes else '',
-        }
+            self._log(f'保存先を確認できませんでした: {type(exc).__name__}: {exc}')
+            return {'error': f'{type(exc).__name__}: {exc}'}
 
     def output_choices(self) -> dict:
         """保存場所の切替に出す2つの候補（フォルダ）。"""
@@ -634,16 +637,34 @@ class BridgeApi:
             name = _documents_output().name
         if not name.lower().endswith('.blend'):
             name += '.blend'
-        folder = _documents_output().parent if kind == 'documents' else _app_folder()
-        if _folder_writable(folder):
-            return {'output': str(folder / name), 'folder': str(folder), 'kind': kind}
-        fallback = _documents_output().parent
-        self._log(f'[OUTPUT] {folder} には保存できません。ドキュメントを使ってください')
-        result = {'error': 'このフォルダには保存できません。ドキュメントを使ってください',
-                  'kind': 'documents'}
-        if kind != 'documents' and _folder_writable(fallback):
-            result.update({'output': str(fallback / name), 'folder': str(fallback)})
-        return result
+        try:
+            folder = _documents_output().parent if kind == 'documents' else _app_folder()
+            writable = self._writable_or_unknown(folder)
+            if writable is not False:
+                result = {'output': str(folder / name), 'folder': str(folder), 'kind': kind}
+                if writable is None:
+                    result['warning'] = _UNCHECKED_OUTPUT_WARNING
+                return result
+            fallback = _documents_output().parent
+            self._log(f'[OUTPUT] {folder} には保存できません。ドキュメントを使ってください')
+            result = {'error': 'このフォルダには保存できません。ドキュメントを使ってください',
+                      'kind': 'documents'}
+            if kind != 'documents' and self._writable_or_unknown(fallback) is not False:
+                result.update({'output': str(fallback / name), 'folder': str(fallback)})
+            return result
+        except Exception as exc:
+            self._log(f'[OUTPUT] 保存場所を切り替えられませんでした: {type(exc).__name__}: {exc}')
+            return {'error': f'保存場所を切り替えられませんでした: {type(exc).__name__}: {exc}'}
+
+    def _writable_or_unknown(self, folder: Path) -> bool | None:
+        """書けるなら True、書けないなら False、確かめられない（遅い場所・期限切れ）なら None。"""
+        if app_paths.is_slow_path(folder):
+            self._log(f'[OUTPUT] {folder} は OneDrive/ネットワーク上なので、書込みの確認を省きます')
+            return None
+        writable = app_paths.writable_quick(folder)
+        if writable is None:
+            self._log(f'[OUTPUT] {folder} の書込み確認が時間内に終わりませんでした')
+        return writable
 
     def start_generate(self, form: dict | None = None) -> dict:
         """確認ダイアログなしで作成を始める。走っている間の呼び出しは何もしない。"""
@@ -654,8 +675,9 @@ class BridgeApi:
             request.check()
         except Exception as exc:
             return {'started': False, 'error': str(exc)}
-        if request.output_blend.exists():
-            fresh = _gui().free_output_path(request.output_blend)
+        if (not app_paths.is_slow_path(request.output_blend)
+                and app_paths.exists_quick(request.output_blend)):
+            fresh = app_paths.free_output_path_quick(request.output_blend)
             self._log(f'[RENAME] 同じ名前のファイルがあるので、上書きせず {fresh.name} で保存します')
             request = dataclasses.replace(request, output_blend=fresh)
         self._form['output'] = str(request.output_blend)
@@ -666,7 +688,8 @@ class BridgeApi:
         # 「動いているか」の判定と _running=True を同じ鍵の中で行う（二重起動を防ぐ）。
         with self._lock:
             if self._running:
-                return {'started': False, 'reason': 'running'}
+                return {'started': False, 'reason': 'running',
+                        'error': '前の処理を停止しています。少し待ってからもう一度お試しください'}
             self._running = True
             self._stage = 1
             self._announced = 1
@@ -694,10 +717,13 @@ class BridgeApi:
 
     def cancel(self) -> bool:
         with self._lock:
-            running, token = self._running, self._token
-        if running and token is not None:
+            running, token, job = self._running, self._token, self._job
+        if running and token is not None and not token.cancelled:
             token.cancel()
             self._log('[STOP] 中断要求を受け付けました。通信・子プロセスを終了中')
+            # workerの停止を待たず、画面だけ先に中止へ戻す。_running は worker が
+            # 実際に終えるまで True のままにして、次の生成との並走を防ぐ。
+            self._emit('cancelled', _gui().CANCELLED_MESSAGE, job=job)
             return True
         return False
 
@@ -1178,7 +1204,8 @@ def _open_browser(url: str) -> bool:
 
 def _session_outcome(now, started_at, last_contact, *, process=None, process_alive=True,
                      bye_at=None, first_timeout=FIRST_CONTACT_TIMEOUT,
-                     idle_timeout=IDLE_TIMEOUT, bye_grace=BYE_GRACE) -> str:
+                     idle_timeout=IDLE_TIMEOUT, bye_grace=BYE_GRACE,
+                     page_served_at=None) -> str:
     """今の状態から次の判断を返す。``wait`` / ``closed`` / ``failed``。
 
     主な終わりの合図は画面の pagehide から届く ``_bye``。届いた後 ``bye_grace`` 秒
@@ -1186,8 +1213,13 @@ def _session_outcome(now, started_at, last_contact, *, process=None, process_ali
     Edge は起動した msedge.exe が本体を起動し直してすぐ終わることが多く、その瞬間は
     最初の連絡の前にも後にも来うる。なので最初の連絡の後は、プロセスの生死を見ない
     （2026-11-06 Sol レビュー：連絡の後に抜けると、窓が残ったままサーバーを止めていた）。
+    画面（index.html）を返せていれば窓は開いているので、API の連絡が遅くても
+    ``first_timeout`` の3倍まで待つ。ここで止めると、窓だけが残って全ての操作が
+    Failed to fetch になる（2026-11-10 Office PC 実機）。
     """
     if last_contact is None:
+        if page_served_at is not None:
+            return 'failed' if now - started_at >= first_timeout * 3 else 'wait'
         if process is not None and not process_alive:
             return 'failed'
         return 'failed' if now - started_at >= first_timeout else 'wait'
@@ -1196,6 +1228,21 @@ def _session_outcome(now, started_at, last_contact, *, process=None, process_ali
     if now - last_contact >= idle_timeout:
         return 'closed'
     return 'wait'
+
+
+def _server_ready(port: int, token: str, timeout: float = 3.0) -> bool:
+    """Edge を開く前に、ローカルHTTPが実際に画面のファイルを返せるか確かめる。
+    index.html は「画面に届いた」印に使うので、ここでは app.js を取る。"""
+    url = f'http://127.0.0.1:{port}/app.js'
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=0.5) as response:
+                if response.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.05)
+    return False
 
 
 def main() -> bool:
@@ -1215,6 +1262,7 @@ def main() -> bool:
         write_fallback_log(f'ローカルHTTPサーバーを起動できませんでした: {type(exc).__name__}: {exc}',
                            traceback.format_exc())
         return False
+    _server_ready(server.port, server.token)
 
     process = None
     started = time.monotonic()
@@ -1243,9 +1291,11 @@ def main() -> bool:
                 # そちらへ引き渡してすぐ終わる。窓は開くので、以後は心拍で見守る。
                 process = None
             outcome = _session_outcome(now, started, last, process=process, process_alive=alive,
-                                       bye_at=server.bye_at)
+                                       bye_at=server.bye_at,
+                                       page_served_at=server.page_served_at)
             if outcome == 'failed':
-                write_fallback_log('画面から最初の連絡が60秒以内に来ませんでした',
+                served = '画面は表示済み' if server.page_served_at is not None else '画面も未表示'
+                write_fallback_log(f'画面から最初の連絡が来ませんでした（{served}）',
                                    traceback.format_exc())
                 if process is not None and process.poll() is None:
                     try:

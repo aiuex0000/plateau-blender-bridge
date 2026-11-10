@@ -28,6 +28,7 @@ from .pipeline import run
 from .artifact_cache import valid as cache_valid, mark as cache_mark
 from .runtime import CancelToken, run_logged
 from .resources import forecast, enforce_budget
+from . import app_paths
 
 Log=Callable[[str],None]
 
@@ -228,7 +229,8 @@ def generate(req:AutoRequest, *, log:Log=print, cancel:CancelToken|None=None, ca
              blender_runner=run, tile_factory=GsiTiles)->Path:
     req.check()
     if cancel: cancel.check()
-    if req.output_blend.exists():raise FileExistsError(f'出力 .blend を上書きしません: {req.output_blend}')
+    if not app_paths.is_slow_path(req.output_blend) and app_paths.exists_quick(req.output_blend):
+        raise FileExistsError(f'出力 .blend を上書きしません: {req.output_blend}')
     blender=req.blender_executable or find_blender()
     if blender is None or not blender.is_file(): raise FileNotFoundError('Blenderが検出できません。Blender.exeを指定してください')
     binary=req.nusamai_executable or find_nusamai()

@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 DATA_FOLDER_NAME = 'data'
@@ -67,3 +69,113 @@ def edge_profile_dir(root: Path | None = None) -> Path:
         if len(str(candidate)) < 100:
             return candidate
     return Path(tempfile.gettempdir()) / _TEMP_FOLDER_NAME / 'edge-profile'
+
+
+def is_slow_path(path: Path) -> bool:
+    """OneDrive・UNC・ネットワークドライブは、存在確認が長くかかることがある。"""
+    text = str(path)
+    lower = text.lower()
+    if text.startswith('\\\\') or text.startswith('//'):
+        return True
+    if '\\onedrive' in lower or '/onedrive' in lower:
+        return True
+    drive = os.path.splitdrive(text)[0]
+    if drive and os.name == 'nt':
+        try:
+            import ctypes
+            return ctypes.windll.kernel32.GetDriveTypeW(drive + '\\') == 4  # DRIVE_REMOTE
+        except Exception:
+            return False
+    return False
+
+
+def exists_quick(path: Path, timeout: float = 2.0) -> bool:
+    """存在確認を短く打ち切る。遅い場所でHTTPの応答を止めないため。"""
+    result = {'value': False}
+
+    def worker():
+        try:
+            result['value'] = path.exists()
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    return bool(result['value'])
+
+
+def writable_quick(folder: Path, timeout: float = 3.0) -> bool | None:
+    """作れるか・書けるかを小さなファイルで確かめる。``timeout`` 秒で打ち切り、
+    分からなければ None。OneDrive やネットワークで HTTP の応答を止めないため。"""
+    result: dict = {'value': None}
+
+    def worker():
+        probe = None
+        try:
+            target = Path(folder).expanduser()
+            target.mkdir(parents=True, exist_ok=True)
+            probe = target / f'.plateau_write_{os.getpid()}_{threading.get_ident()}'
+            probe.write_bytes(b'')
+            result['value'] = True
+        except OSError:
+            result['value'] = False
+        finally:
+            if probe is not None:
+                try:
+                    probe.unlink()
+                except OSError:
+                    pass
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    return None if thread.is_alive() else result['value']
+
+
+def documents_dir() -> Path:
+    """本当の「ドキュメント」。OneDrive へリダイレクトされていても、その先を返す。
+    取れない時（Windows 以外・API の失敗）は ホーム/Documents。"""
+    fallback = Path.home() / 'Documents'
+    if os.name != 'nt':
+        return fallback
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [('Data1', wintypes.DWORD), ('Data2', wintypes.WORD),
+                        ('Data3', wintypes.WORD), ('Data4', ctypes.c_ubyte * 8)]
+
+        # FOLDERID_Documents {FDD39AD0-238F-46AF-ADB4-6C85480369C7}
+        folder_id = _GUID(0xFDD39AD0, 0x238F, 0x46AF,
+                          (ctypes.c_ubyte * 8)(0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7))
+        out = ctypes.c_wchar_p()
+        shell32 = ctypes.windll.shell32
+        shell32.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(_GUID), wintypes.DWORD,
+                                                 wintypes.HANDLE, ctypes.POINTER(ctypes.c_wchar_p)]
+        shell32.SHGetKnownFolderPath.restype = ctypes.c_long
+        if shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(out)) != 0:
+            return fallback
+        try:
+            text = out.value
+        finally:
+            ctypes.windll.ole32.CoTaskMemFree(out)
+        return Path(text) if text else fallback
+    except Exception:
+        return fallback
+
+
+def free_output_path_quick(path: Path, timeout: float = 3.0) -> Path:
+    """既存名を避ける。確認全体を``timeout``秒で打ち切る。"""
+    deadline = time.monotonic() + timeout
+    if not exists_quick(path, timeout=min(2.0, timeout)):
+        return path
+    for number in range(2, 50):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return path
+        candidate = path.with_name(f'{path.stem}_{number}{path.suffix}')
+        if not exists_quick(candidate, timeout=min(2.0, remaining)):
+            return candidate
+    return path
