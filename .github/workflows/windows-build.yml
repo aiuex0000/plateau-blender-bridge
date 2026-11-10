@@ -29,10 +29,17 @@ jobs:
       - name: Verify bundled Python, geodesy data and Blender scripts
         shell: pwsh
         run: |
-          & 'dist/PLATEAU-Blender-Bridge/PLATEAU-Blender-Bridge.exe' --self-check 'frozen-check.json'
-          if ($LASTEXITCODE -ne 0) { throw 'Bundled exe self check failed' }
+          $exe = 'dist/PLATEAU-Blender-Bridge/PLATEAU-Blender-Bridge.exe'
+          $check = Start-Process $exe -ArgumentList '--self-check', 'frozen-check.json' -Wait -PassThru
+          if ($check.ExitCode -ne 0) {
+            if (Test-Path 'frozen-check.json') { Get-Content 'frozen-check.json' -Raw -Encoding utf8 }
+            throw "Bundled exe self check failed (exit $($check.ExitCode))"
+          }
           $report = Get-Content 'frozen-check.json' -Raw -Encoding utf8 | ConvertFrom-Json
-          if (-not $report.passed) { throw 'Bundle requirements missing' }
+          if (-not $report.passed) {
+            $report | ConvertTo-Json -Depth 5
+            throw 'Bundle requirements missing'
+          }
       - name: Read package version
         id: version
         shell: pwsh
