@@ -112,10 +112,15 @@
             <div class="ffolder" id="output-folder" title=""></div>
             <button type="button" class="ghost" id="choose-output">変更</button>
           </div>
-          <dl class="summary">
-            <dt>場所</dt><dd id="summary-place" title="">—</dd>
-            <dt>広さ</dt><dd id="summary-area" title="">—</dd>
-          </dl>
+          <dl class="summary" id="settings-summary"></dl>
+          <details class="settings-more" id="settings-more">
+            <summary id="settings-more-label">今回の設定をすべて見る</summary>
+            <dl class="summary settings-detail" id="settings-detail"></dl>
+            <div class="settings-copy">
+              <button type="button" class="linkbtn" id="copy-settings">設定をコピー</button>
+              <span class="hint" id="copy-settings-done" hidden>コピーしました</span>
+            </div>
+          </details>
           <p class="hint" id="rename-note" hidden></p>
           <p class="error" id="start-error" role="alert" hidden></p>
           <button type="button" class="linkbtn" id="retry-plan" hidden>保存先をもう一度確認</button>
@@ -184,50 +189,117 @@
           <h1 class="q">詳細設定</h1>
           <button type="button" class="back" id="btn-adv-back">← 戻る</button>
         </div>
+        <p class="adv-lead">ふだんは変えなくて大丈夫です。気になる項目は ? で説明を見られます。</p>
         <div class="adv-grid">
-          <label for="adv-output">保存先（フルパス）</label>
+          <div class="adv-label">
+            <label for="adv-output">保存先（フルパス）</label>
+            <button type="button" class="help-btn" aria-label="保存先（フルパス）の説明" aria-describedby="help-output" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-output" role="tooltip" hidden>
+              <span>作る .blend ファイルの保存場所を、ファイル名まで含めて指定します。</span>
+              <span class="help-hint">基本は3問目の「ここに保存します」で選べば大丈夫です。</span>
+            </span>
+          </div>
           <div class="row">
             <input id="adv-output" type="text" autocomplete="off" spellcheck="false">
             <button type="button" class="ghost" id="adv-output-browse">参照</button>
           </div>
-          <label for="adv-blender">Blender本体</label>
+          <div class="adv-label">
+            <label for="adv-blender">Blender本体</label>
+            <button type="button" class="help-btn" aria-label="Blender本体の説明" aria-describedby="help-blender" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-blender" role="tooltip" hidden>
+              <span>.blend を作るのに使う blender.exe の場所です。起動時に自動で探して入れます。</span>
+              <span class="help-hint">基本は触らなくて大丈夫です。別の版の Blender を使いたい時だけ変えます。</span>
+            </span>
+          </div>
           <div class="row">
             <input id="adv-blender" type="text" autocomplete="off" spellcheck="false">
             <button type="button" class="ghost" id="adv-blender-browse">参照</button>
           </div>
-          <label for="adv-nusamai">nusamai CLI</label>
+          <div class="adv-label">
+            <label for="adv-nusamai">nusamai CLI</label>
+            <button type="button" class="help-btn" aria-label="nusamai CLIの説明" aria-describedby="help-nusamai" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-nusamai" role="tooltip" hidden>
+              <span>PLATEAU の建物データ（CityGML）を3Dモデルへ変換する道具です。アプリに同梱されています。</span>
+              <span class="help-hint">基本は触らなくて大丈夫です。</span>
+            </span>
+          </div>
           <div class="row">
             <input id="adv-nusamai" type="text" autocomplete="off" spellcheck="false">
             <button type="button" class="ghost" id="adv-nusamai-browse">参照</button>
           </div>
-          <label for="adv-epsg">EPSG</label>
+          <div class="adv-label">
+            <label for="adv-epsg">EPSG</label>
+            <button type="button" class="help-btn" aria-label="EPSGの説明" aria-describedby="help-epsg" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-epsg" role="tooltip" hidden>
+              <span>位置の基準にする座標系の番号です。AUTO なら、場所から日本の平面直角座標系（JGD2011）を自動で選びます。</span>
+              <span class="help-hint">基本は AUTO のままで大丈夫です。他のデータと座標を合わせたい時だけ番号（例: 6674）を入れます。</span>
+            </span>
+          </div>
           <input id="adv-epsg" type="text" autocomplete="off" spellcheck="false">
-          <label for="adv-lod">建物LOD</label>
+          <div class="adv-label">
+            <label for="adv-lod">建物LOD</label>
+            <button type="button" class="help-btn" aria-label="建物LODの説明" aria-describedby="help-lod" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-lod" role="tooltip" hidden>
+              <span>建物の形の詳しさです。</span>
+              <span>min_lod: 高さのない平らな足跡（一番軽い）</span>
+              <span>max_lod: 一番詳しい形・色なし</span>
+              <span>textured_max_lod: 一番詳しい形＋写真の貼り付け（既定）</span>
+              <span class="help-hint">軽くしたい時や、テクスチャが無い地域で止まる時は max_lod にします。</span>
+            </span>
+          </div>
           <select id="adv-lod">
             <option value="min_lod">min_lod</option>
             <option value="max_lod">max_lod</option>
             <option value="textured_max_lod" selected>textured_max_lod</option>
           </select>
-          <label for="adv-zoom">航空写真ズーム</label>
+          <div class="adv-label">
+            <label for="adv-zoom">航空写真ズーム</label>
+            <button type="button" class="help-btn" aria-label="航空写真ズームの説明" aria-describedby="help-zoom" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-zoom" role="tooltip" hidden>
+              <span>地面に貼る航空写真（国土地理院）の細かさです。18 が一番細かく、数字を下げると粗くなる代わりに軽くなります。広い範囲では自動で下げます。</span>
+              <span class="help-hint">基本は 18 のままで大丈夫です。</span>
+            </span>
+          </div>
           <select id="adv-zoom">
             <option value="14">14</option><option value="15">15</option>
             <option value="16">16</option><option value="17">17</option>
             <option value="18" selected>18</option>
           </select>
-          <label for="adv-dem">地形のサンプル密度</label>
+          <div class="adv-label">
+            <label for="adv-dem">地形のサンプル密度</label>
+            <button type="button" class="help-btn" aria-label="地形のサンプル密度の説明" aria-describedby="help-dem" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-dem" role="tooltip" hidden>
+              <span>地形の起伏を、範囲の長い辺あたり何点で測るかです。大きいほど滑らかですが、重くなります。</span>
+              <span class="help-hint">基本は 100 のままで大丈夫です。</span>
+            </span>
+          </div>
           <select id="adv-dem">
             <option value="40">40</option><option value="60">60</option>
             <option value="100" selected>100</option><option value="160">160</option>
             <option value="256">256</option>
           </select>
-          <label for="adv-axis">OBJ座標軸</label>
+          <div class="adv-label">
+            <label for="adv-axis">OBJ座標軸</label>
+            <button type="button" class="help-btn" aria-label="OBJ座標軸の説明" aria-describedby="help-axis" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-axis" role="tooltip" hidden>
+              <span>変換した建物の東西・南北の並びです。auto なら範囲と照らして自動で判定し、判定できない時は間違った地図を作らずに止まります。</span>
+              <span class="help-hint">基本は auto のままで大丈夫です。建物が90度回る・地形とずれる時だけ xyz / yxz を試します。</span>
+            </span>
+          </div>
           <select id="adv-axis">
             <option value="auto" selected>auto</option>
             <option value="xyz">xyz</option>
             <option value="yxz">yxz</option>
           </select>
           <span></span>
-          <label class="check"><input type="checkbox" id="adv-clip" checked> 矩形範囲で建物を切り出す</label>
+          <div class="adv-check">
+            <label class="check"><input type="checkbox" id="adv-clip" checked> 矩形範囲で建物を切り出す</label>
+            <button type="button" class="help-btn" aria-label="矩形範囲で建物を切り出すの説明" aria-describedby="help-clip" aria-expanded="false">?</button>
+            <span class="help-bubble" id="help-clip" role="tooltip" hidden>
+              <span>指定した範囲の外の建物を切り落とします。外すと、PLATEAU のデータ単位（約1km四方）ごと読み込むので重くなります。</span>
+              <span class="help-hint">基本はオンのままで大丈夫です。</span>
+            </span>
+          </div>
         </div>
         <div class="adv-actions">
           <button type="button" class="ghost" id="adv-preview">取得対象の確認</button>

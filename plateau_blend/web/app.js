@@ -16,6 +16,9 @@ const state = {
   job: null,          /* {id, kind} */
   pending: null,      /* 開始の返事待ちの作業 */
   buffered: [],       /* 開始の返事より先に届いた作業イベント */
+  lastSeq: 0,         /* 処理し終えた最後の知らせの番号。poll でサーバーへ返す */
+  pollFailures: 0,    /* poll の連続失敗回数 */
+  pollWarned: false,  /* 通信途切れの知らせをログに出したか */
   stage: 0,
   result: null,
   scanned: false,
@@ -96,6 +99,8 @@ async function callApiOnce(name, args, options = {}) {
   const timeout = options.timeout === undefined ? 20000 : options.timeout;
   const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
   let response;
+  let payload = null;
+  // 応答本文を読み終えるまでタイマーを止めない。本文の途中で切れても待ち続けないため。
   try {
     response = await fetch('/api/' + name, {
       method: 'POST',
@@ -103,6 +108,13 @@ async function callApiOnce(name, args, options = {}) {
       body: JSON.stringify({ args }),
       signal
     });
+    try {
+      payload = await response.json();
+    } catch (error) {
+      /* 通信の切断（TypeError）と時間切れは外へ。JSONとして読めないだけなら HTTP エラー扱い */
+      if (error instanceof TypeError || (error && error.name === 'AbortError')) throw error;
+      payload = null;
+    }
   } catch (error) {
     if (error && error.name === 'AbortError') {
       throw new Error('通信がタイムアウトしました。ネットワークの状態を確認して、もう一度お試しください');
@@ -111,8 +123,6 @@ async function callApiOnce(name, args, options = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
-  let payload = null;
-  try { payload = await response.json(); } catch (error) { payload = null; }
   if (payload && payload.ok) return payload.result;
   throw new Error((payload && payload.error) || ('HTTP ' + response.status));
 }
@@ -140,6 +150,7 @@ async function start() {
     if (state.meta.title) document.title = state.meta.title;
   } catch (error) {
     console.error('initial_state failed', error);
+    appendLog('起動時の情報を取得できませんでした: ' + error);
   }
   state.form.output = state.meta.default_output || '';
   paintSaveLocation(state.meta.default_kind || 'documents');
@@ -152,18 +163,41 @@ async function start() {
   showStep(1);
   showView('input');
   pollLoop();
-  state.api.scan();
+  startScan();
+}
+
+function startScan() {
+  state.api.scan().catch(error => {
+    appendLog('Blender / nusamai の検索を始められませんでした: ' + error);
+  });
 }
 
 /* ── 取り込み ─────────────────────────────────────────────────── */
 
+const POLL_FAILURE_NOTICE = 10;
+
 async function pollLoop() {
   if (!state.api || state.closed) return;
   try {
-    const events = await state.api.poll();
-    (events || []).forEach(handle);
+    // 処理済みの番号を返す。サーバーはそれより新しい知らせを、受け取りが届くまで返し続ける。
+    const events = await state.api.poll(state.lastSeq);
+    state.pollFailures = 0;
+    state.pollWarned = false;
+    (events || []).forEach(event => {
+      const seq = event && typeof event.seq === 'number' ? event.seq : null;
+      if (seq !== null) {
+        if (seq <= state.lastSeq) return; /* やり直しで届いた重複 */
+        state.lastSeq = seq;
+      }
+      handle(event);
+    });
   } catch (error) {
-    /* 窓を閉じた後の poll は黙って止める */
+    /* 一度の失敗は黙ってやり直す。続く時だけログで知らせる。窓を閉じた後は止まる */
+    state.pollFailures += 1;
+    if (!state.closed && !state.pollWarned && state.pollFailures >= POLL_FAILURE_NOTICE) {
+      state.pollWarned = true;
+      appendLog('画面とアプリの通信が途切れています。しばらく待っても戻らない時は、アプリを開き直してください');
+    }
   }
   if (!state.closed) setTimeout(pollLoop, 150);
 }
@@ -602,13 +636,64 @@ async function refreshPlan() {
   $('output-name').title = plan.output || '';
   $('output-folder').textContent = plan.output_folder || '';
   $('output-folder').title = plan.output_folder || '';
-  $('summary-place').textContent = plan.place || '—';
-  $('summary-place').title = plan.place || '';
-  $('summary-area').textContent = plan.area || '—';
-  $('summary-area').title = plan.area || '';
+  renderSettings(plan);
   $('rename-note').hidden = !(plan.renamed || plan.note);
   $('rename-note').textContent = plan.rename_note || plan.note || '';
   updateRunButtons();
+}
+
+/* 3問目の「今回の設定」。古いサーバーで settings が無い時は場所と広さだけ出す */
+function settingsRows(plan) {
+  if (plan && Array.isArray(plan.settings)) return plan.settings;
+  return [
+    { key: 'place', label: '場所', value: (plan && plan.place) || '—', changed: false },
+    { key: 'area', label: '広さ', value: (plan && plan.area) || '—', changed: false },
+  ];
+}
+
+// 場所と広さは常に見せ、残りは「今回の設定をすべて見る」の中へしまう。
+const ALWAYS_SHOWN = new Set(['place', 'area']);
+
+function renderSettings(plan) {
+  const main = $('settings-summary');
+  const detail = $('settings-detail');
+  main.replaceChildren();
+  detail.replaceChildren();
+  let changed = 0;
+  for (const row of settingsRows(plan)) {
+    const value = String(row.value || '—');
+    const dt = document.createElement('dt');
+    dt.textContent = row.label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dd.title = value;
+    if (row.changed) {
+      changed += 1;
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = '変更';
+      dd.append(' ', tag);
+    }
+    (ALWAYS_SHOWN.has(row.key) ? main : detail).append(dt, dd);
+  }
+  $('settings-more').hidden = !detail.childElementCount;
+  $('settings-more-label').textContent = '今回の設定をすべて見る'
+    + (changed ? `（変更 ${changed}件）` : '');
+}
+
+let copySettingsTimer = 0;
+
+async function copySettings() {
+  const lines = ['PLATEAU Blender Bridge v' + (state.meta.version || '')];
+  for (const row of settingsRows(state.plan)) {
+    lines.push(row.label + ': ' + String(row.value || '—') + (row.changed ? '（変更）' : ''));
+  }
+  lines.push('保存先: ' + ((state.plan && state.plan.output) || state.form.output || ''));
+  const copied = await copyText(lines.join('\n'));
+  $('copy-settings-done').textContent = copied ? 'コピーしました' : 'コピーできませんでした';
+  $('copy-settings-done').hidden = false;
+  clearTimeout(copySettingsTimer);
+  copySettingsTimer = setTimeout(() => { $('copy-settings-done').hidden = true; }, 2000);
 }
 
 function showStartError(text) {
@@ -970,7 +1055,11 @@ async function runAdvancedJob(kind, call) {
   if (state.job || state.pending) return;
   appendLog(kind === 'preview' ? '取得対象を確認しています…' : 'Blender自己診断を始めます…');
   try {
-    await beginJob(kind, call);
+    const outcome = await beginJob(kind, call);
+    if (outcome && outcome.started === false) {
+      const resp = outcome.response;
+      appendLog('始められませんでした: ' + (resp && (resp.error || resp.reason) || '理由不明'));
+    }
   } catch (error) {
     appendLog('始められませんでした: ' + error);
   }
@@ -1014,7 +1103,7 @@ function bindAdvanced() {
     state.form.nusamai = String(picked);
     syncAdvanced();
   });
-  $('adv-rescan').addEventListener('click', () => state.api.scan());
+  $('adv-rescan').addEventListener('click', startScan);
 
   $('adv-preview').addEventListener('click', () => {
     runAdvancedJob('preview', () => state.api.preview_sources(state.form));
@@ -1044,12 +1133,18 @@ async function copyLog() {
   } catch (error) {
     text = $('adv-log').value;
   }
+  const copied = await copyText(text);
+  appendLog(copied ? 'ログをコピーしました。貼り付け先で Ctrl+V できます。'
+    : 'コピーできませんでした。ログ欄から選択してコピーしてください。');
+}
+
+/* クリップボードへ書く。WebView2 で clipboard API が使えない時は execCommand で控える */
+async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
-    appendLog('ログをコピーしました。貼り付け先で Ctrl+V できます。');
-    return;
+    return true;
   } catch (error) {
-    /* WebView2 で clipboard API が使えない時の控え */
+    /* 下の控えへ */
   }
   const helper = document.createElement('textarea');
   helper.value = text;
@@ -1060,13 +1155,14 @@ async function copyLog() {
   let copied = false;
   try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
   helper.remove();
-  appendLog(copied ? 'ログをコピーしました。' : 'コピーできませんでした。ログ欄から選択してコピーしてください。');
+  return copied;
 }
 
 /* ── クリックの配線 ───────────────────────────────────────────── */
 
 function bind() {
   $('place-select').addEventListener('change', onPlaceSelect);
+  $('copy-settings').addEventListener('click', copySettings);
 
   $('area-input').addEventListener('input', onAreaInput);
   $('area-input').addEventListener('keydown', event => {
@@ -1153,10 +1249,55 @@ function bind() {
   $('btn-save-log').addEventListener('click', saveLog);
 
   $('get-blender').addEventListener('click', () => state.api.open_url('blender'));
-  $('rescan').addEventListener('click', () => state.api.scan());
+  $('rescan').addEventListener('click', startScan);
 
   bindAdvanced();
+  bindHelp();
   bindRangePreview();
+}
+
+/* ── 詳細設定の ? （重ねる・フォーカスで表示、クリックで固定） ── */
+
+let pinnedHelp = null;
+
+function setHelpVisible(button, visible) {
+  $(button.getAttribute('aria-describedby')).hidden = !visible;
+}
+
+function unpinHelp() {
+  if (!pinnedHelp) return;
+  const button = pinnedHelp;
+  pinnedHelp = null;
+  button.setAttribute('aria-expanded', 'false');
+  setHelpVisible(button, false);
+}
+
+function bindHelp() {
+  const buttons = document.querySelectorAll('.help-btn');
+  buttons.forEach(button => {
+    const show = () => { if (!pinnedHelp) setHelpVisible(button, true); };
+    const hide = () => { if (pinnedHelp !== button) setHelpVisible(button, false); };
+    button.addEventListener('mouseenter', show);
+    button.addEventListener('focus', show);
+    button.addEventListener('mouseleave', hide);
+    button.addEventListener('blur', hide);
+    button.addEventListener('click', () => {
+      const wasPinned = pinnedHelp === button;
+      unpinHelp();
+      if (wasPinned) return;
+      pinnedHelp = button;
+      button.setAttribute('aria-expanded', 'true');
+      setHelpVisible(button, true);
+    });
+  });
+  document.addEventListener('click', event => {
+    if (pinnedHelp && !event.target.closest('.help-btn, .help-bubble')) unpinHelp();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    unpinHelp();
+    buttons.forEach(button => setHelpVisible(button, false));
+  });
 }
 
 /* ── 範囲プレビュー（国土地理院 地理院タイル） ─────────────────── */

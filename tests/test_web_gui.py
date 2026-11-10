@@ -316,7 +316,104 @@ class PlanTests(BridgeTestCase):
                          '私の街.blend')
 
 
+    def test_plan_includes_the_settings_summary(self):
+        api = BridgeApi()
+        api._scanned_blender = Path(r'C:\Blender\blender.exe')
+        plan = api.plan(self.form(place_name='東京タワー', zoom='16'))
+        self.assertNotIn('error', plan)
+        rows = {row['key']: row for row in plan['settings']}
+        self.assertEqual(rows['place']['value'], '東京タワー')
+        self.assertEqual(rows['area']['value'], '400m')
+        self.assertEqual(rows['zoom']['value'], 'ズーム 16')
+        self.assertTrue(rows['zoom']['changed'])
+        self.assertEqual(rows['blender']['value'], r'C:\Blender\blender.exe')
+        self.assertFalse(rows['blender']['changed'])
+
+
+class SettingsSummaryTests(BridgeTestCase):
+    KEYS = ['place', 'area', 'mode', 'lod', 'zoom', 'dem_res', 'epsg', 'axis', 'clip',
+            'blender']
+    SCANNED = Path(r'C:\Blender\blender.exe')
+
+    def rows(self, scanned=SCANNED, **overrides):
+        return {row['key']: row
+                for row in web_gui.settings_summary(self.form(**overrides), scanned)}
+
+    def test_defaults_change_nothing_and_keep_the_order(self):
+        rows = web_gui.settings_summary(self.form(place_name='東京タワー'), self.SCANNED)
+        self.assertEqual([row['key'] for row in rows], self.KEYS)
+        self.assertEqual([row['key'] for row in rows if row['changed']], [])
+        values = {row['key']: row['value'] for row in rows}
+        self.assertEqual(values['place'], '東京タワー')
+        self.assertEqual(values['area'], '400m')
+        self.assertEqual(values['mode'], '中心と広さ')
+        self.assertEqual(values['lod'], '最大（テクスチャ付き）')
+        self.assertEqual(values['zoom'], 'ズーム 18')
+        self.assertEqual(values['dem_res'], '100')
+        self.assertEqual(values['epsg'], '自動')
+        self.assertEqual(values['axis'], '自動')
+        self.assertEqual(values['clip'], '範囲で切り出す')
+        self.assertEqual(values['blender'], str(self.SCANNED))
+
+    def test_place_falls_back_to_the_raw_area(self):
+        self.assertEqual(self.rows()['place']['value'], '35.6586, 139.7454')
+
+    def test_each_non_default_is_marked_changed(self):
+        cases = [
+            ('mode', {'mode': 'mesh', 'area': '53394611'}, 'メッシュコード 53394611'),
+            ('mode', {'mode': 'bbox', 'area': '139.74,35.65,139.75,35.66'},
+             '範囲（経度・緯度） 139.74,35.65,139.75,35.66'),
+            ('lod', {'lod': 'min_lod'}, '最小（平らな足跡）'),
+            ('lod', {'lod': 'max_lod'}, '最大（色なし）'),
+            ('zoom', {'zoom': '16'}, 'ズーム 16'),
+            ('dem_res', {'dem_res': '60'}, '60'),
+            ('epsg', {'epsg': '6676'}, 'EPSG:6676'),
+            ('epsg', {'epsg': 'EPSG:6676'}, 'EPSG:6676'),
+            ('axis', {'axis': 'yxz'}, 'yxz'),
+            ('clip', {'clip': False}, '切り出さない'),
+            ('clip', {'clip': 'false'}, '切り出さない'),
+            ('blender', {'blender': r'D:\Other\blender.exe'}, r'D:\Other\blender.exe'),
+        ]
+        for key, overrides, value in cases:
+            with self.subTest(key=key, overrides=overrides):
+                rows = self.rows(**overrides)
+                self.assertTrue(rows[key]['changed'])
+                self.assertEqual(rows[key]['value'], value)
+                others = [k for k, row in rows.items() if row['changed'] and k != key]
+                self.assertEqual(others, [])
+
+    def test_numbers_compare_as_integers(self):
+        rows = self.rows(zoom=18, dem_res=100)
+        self.assertFalse(rows['zoom']['changed'])
+        self.assertFalse(rows['dem_res']['changed'])
+
+    def test_blender_equal_to_scanned_is_not_changed(self):
+        row = self.rows(blender=str(self.SCANNED))['blender']
+        self.assertFalse(row['changed'])
+        self.assertEqual(row['value'], str(self.SCANNED))
+
+    def test_no_blender_at_all_is_not_found(self):
+        row = self.rows(scanned=None)['blender']
+        self.assertEqual(row['value'], '未検出')
+        self.assertFalse(row['changed'])
+
+
 class GenerateTests(BridgeTestCase):
+    def test_start_logs_the_settings_once(self):
+        api = BridgeApi()
+
+        def fake_generate(request, *, log, cancel):
+            return Path(request.output_blend)
+
+        with patch.object(web_gui, 'generate', fake_generate):
+            self.assertTrue(api.start_generate(self.form(lod='min_lod'))['started'])
+            self.collect(api, 'done')
+
+        lines = [line for line in api.log_text().splitlines() if line.startswith('[SETTINGS] ')]
+        self.assertEqual(len(lines), 1)
+        self.assertIn('建物の詳しさ: 最小（平らな足跡）', lines[0])
+        self.assertIn('航空写真の細かさ: ズーム 18', lines[0])
+
     def test_second_start_is_ignored_while_running(self):
         api = BridgeApi()
         gate = threading.Event()
@@ -790,6 +887,45 @@ class DialogTests(BridgeTestCase):
         events = api.poll()
         self.assertTrue(any(event['kind'] == 'log' and '窓が開かない' in event['data']
                             for event in events))
+
+
+class PollCursorTests(BridgeTestCase):
+    def test_events_stay_until_the_client_acknowledges_them(self):
+        api = BridgeApi()
+        for index in range(3):
+            api._emit('log', f'line {index}')
+
+        first = api.poll(0)
+        self.assertEqual([event['seq'] for event in first], [1, 2, 3])
+        # 応答が失われた想定: 同じ cursor でもう一度聞けば同じ知らせが返る。
+        self.assertEqual(api.poll(0), first)
+
+        self.assertEqual(api.poll(3), [])
+        self.assertEqual(api._events, [])
+
+        api._emit('log', 'line 3')
+        later = api.poll(3)
+        self.assertEqual([event['seq'] for event in later], [4])
+        self.assertEqual(later[0]['data'], 'line 3')
+
+    def test_poll_without_cursor_still_drains(self):
+        api = BridgeApi()
+        api._emit('log', 'a')
+        api._emit('log', 'b')
+        self.assertEqual([event['data'] for event in api.poll()], ['a', 'b'])
+        self.assertEqual(api.poll(), [])
+        self.assertEqual(api.poll(0), [])
+
+    def test_unacknowledged_events_are_capped_keeping_the_newest(self):
+        api = BridgeApi()
+        limit = web_gui.EVENT_LOG_LIMIT
+        for index in range(limit + 10):
+            api._emit('log', str(index))
+        events = api.poll(0)
+        self.assertLessEqual(len(events), limit)
+        self.assertEqual(events[-1]['seq'], limit + 10)
+        self.assertEqual(events[-1]['data'], str(limit + 9))
+        self.assertEqual(events[0]['seq'], 11)
 
 
 class EdgeAndFallbackTests(BridgeTestCase):

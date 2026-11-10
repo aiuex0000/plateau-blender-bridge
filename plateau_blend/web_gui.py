@@ -51,12 +51,25 @@ RANGE_MARGIN = 24
 MAPS_URL = 'https://www.google.com/maps'
 MAPS_POINT_URL = 'https://www.google.com/maps/@{lat},{lon},16z'
 JOB_EVENTS = ('stage', 'result', 'done', 'error', 'cancelled')
+# 画面が受け取りを返さない間に溜める知らせの上限。古い方から捨てる。
+EVENT_LOG_LIMIT = 2000
 _APP_FOLDER_NAME = '作った街'
 _NUM = re.compile(r'-?\d+(?:\.\d+)?')
 _MAP_POINT = re.compile(r'@-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?')
 _DMS = re.compile(r'(\d+)\s*°\s*(\d+)\s*[\'′]\s*(\d+(?:\.\d+)?)\s*(?:"|″|\'\')?\s*([NSEW])')
 _UNSAFE_PLACE_NAME_CHARACTERS = re.compile(r'[.<>:"/\\|?*\x00-\x1f]')
 _GUI = None
+
+# 詳細設定の既定値。request_from_form と settings_summary の両方がここを見る。
+DEFAULT_LOD = 'textured_max_lod'
+DEFAULT_ZOOM = 18
+DEFAULT_DEM_RES = 100
+DEFAULT_EPSG = 'AUTO'
+DEFAULT_AXIS = 'auto'
+DEFAULT_CLIP = True
+_MODE_LABELS = {'center': '中心と広さ', 'bbox': '範囲（経度・緯度）', 'mesh': 'メッシュコード'}
+_LOD_LABELS = {'min_lod': '最小（平らな足跡）', 'max_lod': '最大（色なし）',
+               'textured_max_lod': '最大（テクスチャ付き）'}
 
 FIRST_CONTACT_TIMEOUT = 60.0
 IDLE_TIMEOUT = 180.0  # 最小化中の Edge はタイマーを1分1回まで間引くので短くしない
@@ -239,21 +252,29 @@ def request_from_form(form: dict, notes: list[str] | None = None) -> AutoRequest
         output_path = _auto_output_path(output_path, form)
     elif not app_paths.is_slow_path(output_path):
         output_path = output_path.resolve()
-    clip = form.get('clip', True)
-    if isinstance(clip, str):
-        clip = clip.strip().lower() not in ('', '0', 'false', 'off', 'no')
     return AutoRequest(
         condition=condition,
-        epsg=str(form.get('epsg') or 'AUTO').strip() or 'AUTO',
+        epsg=_epsg_from_form(form),
         output_blend=output_path,
         blender_executable=_path_or_none(form.get('blender')),
         nusamai_executable=_path_or_none(form.get('nusamai')),
-        lod=str(form.get('lod') or 'textured_max_lod'),
-        photo_zoom=_as_int(form.get('zoom'), 18, '航空写真ズーム'),
-        terrain_resolution=_as_int(form.get('dem_res'), 100, '地形のサンプル密度'),
-        axis_override=str(form.get('axis') or 'auto'),
-        clip_requested_area=bool(clip),
+        lod=str(form.get('lod') or DEFAULT_LOD),
+        photo_zoom=_as_int(form.get('zoom'), DEFAULT_ZOOM, '航空写真ズーム'),
+        terrain_resolution=_as_int(form.get('dem_res'), DEFAULT_DEM_RES, '地形のサンプル密度'),
+        axis_override=str(form.get('axis') or DEFAULT_AXIS),
+        clip_requested_area=_clip_from_form(form),
     )
+
+
+def _epsg_from_form(form: dict) -> str:
+    return str(form.get('epsg') or DEFAULT_EPSG).strip() or DEFAULT_EPSG
+
+
+def _clip_from_form(form: dict) -> bool:
+    clip = form.get('clip', DEFAULT_CLIP)
+    if isinstance(clip, str):
+        clip = clip.strip().lower() not in ('', '0', 'false', 'off', 'no')
+    return bool(clip)
 
 
 def inspect_area(form: dict | None = None) -> dict:
@@ -321,6 +342,56 @@ def _area_label(form: dict) -> str:
     return f'{size}m'
 
 
+def _int_or_text(value, default: int) -> int | str:
+    text = str(value if value is not None else '').strip()
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
+def settings_summary(form: dict, blender: Path | None = None) -> list[dict]:
+    """3問目の「今回の設定」。既定から変えた行は ``changed`` を立てる。"""
+    form = form or {}
+    rows: list[dict] = []
+
+    def row(key: str, label: str, value: str, changed: bool = False) -> None:
+        rows.append({'key': key, 'label': label, 'value': value, 'changed': bool(changed)})
+
+    raw_area = str(form.get('area') or '').strip()
+    row('place', '場所', str(form.get('place_name') or raw_area).strip())
+    row('area', '広さ', _area_label(form))
+    mode = str(form.get('mode') or 'center')
+    mode_value = _MODE_LABELS.get(mode, mode)
+    if mode != 'center' and raw_area:
+        mode_value = f'{mode_value} {raw_area}'
+    row('mode', '指定方法', mode_value, mode != 'center')
+    lod = str(form.get('lod') or DEFAULT_LOD)
+    row('lod', '建物の詳しさ', _LOD_LABELS.get(lod, lod), lod != DEFAULT_LOD)
+    zoom = _int_or_text(form.get('zoom'), DEFAULT_ZOOM)
+    row('zoom', '航空写真の細かさ', f'ズーム {zoom}', zoom != DEFAULT_ZOOM)
+    dem_res = _int_or_text(form.get('dem_res'), DEFAULT_DEM_RES)
+    row('dem_res', '地形の細かさ', str(dem_res), dem_res != DEFAULT_DEM_RES)
+    epsg = _epsg_from_form(form)
+    if epsg.upper() == DEFAULT_EPSG:
+        row('epsg', '座標系', '自動')
+    else:
+        code = epsg[5:].strip() if epsg.upper().startswith('EPSG:') else epsg
+        row('epsg', '座標系', f'EPSG:{code}', True)
+    axis = str(form.get('axis') or DEFAULT_AXIS)
+    row('axis', 'OBJ座標軸', '自動' if axis == DEFAULT_AXIS else axis, axis != DEFAULT_AXIS)
+    clip = _clip_from_form(form)
+    row('clip', '建物の切り出し', '範囲で切り出す' if clip else '切り出さない', clip != DEFAULT_CLIP)
+    chosen = str(form.get('blender') or '').strip()
+    if chosen:
+        row('blender', 'Blender', chosen, blender is None or Path(chosen) != Path(blender))
+    else:
+        row('blender', 'Blender', str(blender) if blender else '未検出')
+    return rows
+
+
 def _japan_point(lat, lon) -> tuple[float, float] | None:
     try:
         lat_f, lon_f = float(lat), float(lon)
@@ -364,7 +435,9 @@ class BridgeApi:
 
     def __init__(self):
         self._dialogs: Any = None  # save()/open() を持つ物（実体は _TkDialogs、テストでは偽物）
-        self._events: queue.Queue = queue.Queue()
+        # 画面への知らせ。(seq, event) を古い順に持ち、画面が受け取ったと言うまで消さない。
+        self._events: list[tuple[int, dict]] = []
+        self._next_seq = 1
         self._threads: list[threading.Thread] = []
         self._lock = threading.Lock()
         self._log_lines: list[str] = []
@@ -616,6 +689,7 @@ class BridgeApi:
                 'area': _area_label(self._form),
                 'area_m': _area_size_m(self._form),
                 'mode': str(self._form.get('mode') or 'center'),
+                'settings': settings_summary(self._form, self._scanned_blender),
                 'note': ' / '.join(notes),
             }
         except Exception as exc:
@@ -675,6 +749,8 @@ class BridgeApi:
             request.check()
         except Exception as exc:
             return {'started': False, 'error': str(exc)}
+        rows = settings_summary(self._form, self._scanned_blender)
+        self._log('[SETTINGS] ' + ' / '.join(f"{r['label']}: {r['value']}" for r in rows))
         if (not app_paths.is_slow_path(request.output_blend)
                 and app_paths.exists_quick(request.output_blend)):
             fresh = app_paths.free_output_path_quick(request.output_blend)
@@ -963,14 +1039,24 @@ class BridgeApi:
 
     # ── JS が 150ms ごとに呼ぶ ──────────────────────────────────────
 
-    def poll(self) -> list:
-        events = []
+    def poll(self, after: int | None = None) -> list:
+        """``after`` は画面が処理し終えた最大の seq。それ以下を捨て、残りを消さずに返す。
+
+        応答が途中で失われても、次の poll で同じ知らせをもう一度受け取れる。
+        ``after`` を渡さない古い呼び方は、全部返して捨てる。
+        """
+        if after is not None:
+            try:
+                after = int(after)
+            except (TypeError, ValueError):
+                after = 0
         with self._lock:
-            while True:
-                try:
-                    events.append(self._events.get_nowait())
-                except queue.Empty:
-                    break
+            if after is None:
+                events = [event for _seq, event in self._events]
+                self._events = []
+            else:
+                self._events = [(seq, event) for seq, event in self._events if seq > after]
+                events = [event for _seq, event in self._events]
             self._threads = [thread for thread in self._threads if thread.is_alive()]
         return events
 
@@ -992,7 +1078,13 @@ class BridgeApi:
         event = {'kind': kind, 'data': data}
         if kind in JOB_EVENTS:
             event['job_id'] = job if job is not None else self._job
-        self._events.put(event)
+        with self._lock:
+            seq = self._next_seq
+            self._next_seq += 1
+            event['seq'] = seq
+            self._events.append((seq, event))
+            if len(self._events) > EVENT_LOG_LIMIT:
+                del self._events[:len(self._events) - EVENT_LOG_LIMIT]
 
     def _spawn(self, target) -> None:
         thread = threading.Thread(target=target, daemon=True)

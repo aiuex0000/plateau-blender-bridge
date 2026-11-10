@@ -153,6 +153,16 @@ svg.ic{
 .summary{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:0;font-size:13px;min-width:0}
 .summary dt{color:var(--muted)}
 .summary dd{margin:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 今回の設定：確かめたい人が開けば見える、控えめな折りたたみ */
+.settings-more{font-size:12px;color:var(--muted)}
+.settings-more>summary{cursor:pointer;width:max-content}
+.settings-more .settings-detail{margin-top:6px;font-size:12px}
+.settings-more .settings-detail dd{color:var(--muted)}
+.summary .tag{
+  display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--p);border-radius:999px;
+  color:var(--p);font-size:10px;line-height:1.5;vertical-align:1px;
+}
+.settings-copy{display:flex;gap:8px;align-items:center;margin-top:4px}
 
 .ghost{
   border:2px solid var(--line);background:#fff;border-radius:999px;padding:7px 18px;
@@ -245,7 +255,24 @@ svg.ic{
 .adv-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .adv-head .q{font-size:22px;margin-bottom:10px}
 .adv-grid{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;align-items:center;font-size:13px}
-.adv-grid>label{color:var(--muted)}
+.adv-lead{margin:-4px 0 10px;font-size:13px;color:var(--muted)}
+.adv-label{position:relative;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.adv-check{position:relative;display:flex;align-items:center;gap:6px;justify-self:start}
+.help-btn{
+  flex:none;width:16px;height:16px;padding:0;border:1px solid var(--muted);border-radius:50%;
+  background:transparent;color:var(--muted);font-size:11px;font-weight:700;line-height:14px;
+  text-align:center;cursor:pointer;
+}
+.help-btn:hover,.help-btn[aria-expanded="true"]{color:var(--p);border-color:var(--p)}
+.help-btn:focus-visible{outline:2px solid var(--p);outline-offset:2px}
+.help-bubble{
+  position:absolute;top:100%;left:0;z-index:20;margin-top:4px;
+  width:max-content;max-width:min(300px,70vw);padding:8px 10px;
+  background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 14px rgba(43,26,20,.12);
+  font-size:12px;font-weight:400;line-height:1.6;color:var(--ink);white-space:normal;
+}
+.help-bubble>span{display:block}
+.help-bubble .help-hint{color:var(--muted);margin-top:4px}
 .adv-grid input[type=text],.adv-grid select{
   width:100%;min-width:0;border:2px solid var(--line);border-radius:10px;padding:6px 10px;
   background:#fff;
@@ -302,6 +329,8 @@ svg.ic{
 /* 入力の3問は、窓の縦の真ん中に置く（上に寄せると下が大きく空く） */
 #view-input{justify-content:center}
 #view-input .wz{gap:12px;padding-bottom:4vh}
+/* 3問目は設定のまとめが長いので、真ん中にせず上から並べる */
+#view-input .wz[data-wz="3"]{flex:1;padding-top:4vh;padding-bottom:10px;overflow-y:auto}
 @media (max-height:660px){
   #view-input .wz{gap:8px;padding-bottom:0}
   .helper-btn{min-height:40px;padding:7px 12px;font-size:15px}
