@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "plateau_bridge"
-version = "0.2.1"
+version = "0.2.2"
 name = "PLATEAU Bridge"
 tagline = "PLATEAU の建物と国土地理院の地形・航空写真を取り込む"
 maintainer = "PLATEAU Blender Bridge"

@@ -26,14 +26,14 @@ from . import terrain
 bl_info = {
     "name": "PLATEAU Bridge",
     "author": "PLATEAU Blender Bridge",
-    "version": (0, 2, 0),
+    "version": (0, 2, 2),
     "blender": (3, 6, 0),
     "location": "3Dビューポート > サイドバー (N) > PLATEAU",
     "description": "PLATEAU の建物と国土地理院の地形・航空写真を取り込む",
     "category": "Import-Export",
 }
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 MIN_SIDE_M = 50.0
 MAX_SIDE_M = 10000.0
 CACHE_NAMES = ("gsi_cache", "citygml", "textures", "atlas")
@@ -249,6 +249,12 @@ class PlateauBridgeSettings(bpy.types.PropertyGroup):
         "流体シミュレーションなどで隙間へ流れ込みません",
         default=True,
     )
+    as_obstacle: bpy.props.BoolProperty(
+        name="水の障害物にする",
+        description="地形と建物に、流体シミュレーションの障害物（エフェクター：コリジョン）を"
+        "最初から設定します。水を流した時に、水が建物にぶつかって回り込みます",
+        default=True,
+    )
     use_textures: bpy.props.BoolProperty(
         name="建物にテクスチャを貼る",
         description="建物の写真テクスチャも取り込みます。画像の取得に時間が掛かります",
@@ -277,8 +283,15 @@ def _snapshot(settings):
         name: getattr(settings, name)
         for name in ("want_terrain", "want_buildings", "max_lod", "use_textures",
                      "texture_pages", "photo_zoom", "terrain_resolution",
-                     "clip_buildings", "cap_cuts")
+                     "clip_buildings", "cap_cuts", "as_obstacle")
     }
+
+
+def _make_obstacle(obj):
+    """流体の障害物（エフェクター：コリジョン）にする。"""
+    modifier = obj.modifiers.new("Fluid", "FLUID")
+    modifier.fluid_type = "EFFECTOR"
+    modifier.effector_settings.effector_type = "COLLISION"
 
 
 def _assemble(context, job, target, options):
@@ -353,6 +366,11 @@ def _assemble(context, job, target, options):
             if packed.failed:
                 line += "（読めなかった画像 %d 枚）" % packed.failed
             lines.append(line)
+
+    if options["as_obstacle"] and created:
+        for obj in created:
+            _make_obstacle(obj)
+        lines.append("地形と建物を、水の障害物（エフェクター）にしました")
 
     scene[KEY_EPSG] = epsg
     scene[KEY_ORIGIN] = origin
@@ -605,6 +623,7 @@ class PLATEAUBRIDGE_PT_panel(bpy.types.Panel):
             row = column.row()
             row.enabled = settings.clip_buildings
             row.prop(settings, "cap_cuts")
+            column.prop(settings, "as_obstacle")
             column.prop(settings, "use_textures")
             row = column.row()
             row.enabled = settings.use_textures
