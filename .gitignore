@@ -31,3 +31,6 @@ dist-old/
 # ポータブル版がアプリのフォルダの中に書く物（開発時は repo 直下）
 /data/
 /作った街/
+
+# マニュアルの配布データ（小さい.blend）は入れる
+!docs/manual/assets/*.blend
