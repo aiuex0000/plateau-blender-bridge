@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "plateau_bridge"
+version = "0.2.1"
+name = "PLATEAU Bridge"
+tagline = "PLATEAU の建物と国土地理院の地形・航空写真を取り込む"
+maintainer = "PLATEAU Blender Bridge"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+[permissions]
+network = "地理院タイルと PLATEAU の CityGML を取得する"
+files = "取得したデータをアドオンの保存フォルダへ置く"

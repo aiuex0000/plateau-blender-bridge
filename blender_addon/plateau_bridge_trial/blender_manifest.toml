@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "plateau_bridge_trial"
+version = "0.0.1"
+name = "PLATEAU Bridge 試作"
+tagline = "地理院タイルを1枚取り込み、板に貼る動作確認用の試作"
+maintainer = "PLATEAU Blender Bridge"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+[permissions]
+network = "国土地理院の地理院タイルを取得する"
+files = "取得した画像を一時フォルダへ書いてから読み込む"
