@@ -2,9 +2,11 @@
 #
 # PLATEAU Bridge で作った街の上から、水の塊を落とします。
 # 使い方: Blender の「Scripting」タブでこのファイルを開き、▶（スクリプト実行）を押す。
-# そのあと、タイムラインの再生ボタン（またはスペースキー）で水が動きます。
+# 水の動きを先に計算（ベイク）します。画面の下に進み具合が出るので、終わるまで待ちます。
+# 終わったら、タイムラインの再生ボタン（またはスペースキー）で水が動きます。
 #
 # 何度実行しても、前の水を消してから作り直します。
+# 性能の弱いPC（内蔵GPUのミニPCなど）では、RESOLUTION は 32〜48 にしてください。
 # 防災の予測ではなく、物理演算で水の動きを体験するためのものです。
 
 import bmesh
@@ -12,7 +14,7 @@ import bpy
 from mathutils import Vector
 
 # ---- ここの数字を変えると、水の様子が変わります ----
-RESOLUTION = 64      # 水の細かさ。64 は軽い、96 はふつう、128 はきれい（時間がかかる）
+RESOLUTION = 48      # 水の細かさ。32〜48 は軽い、64 はふつう、96 以上はきれい（時間がかかる）
 SECONDS = 4          # 何秒ぶん計算するか
 WATER_SIZE = 0.3     # 水の塊の大きさ（街の一辺に対する割合）
 DROP_HEIGHT = 25.0   # 水の塊を、地面から何 m の高さに置くか
@@ -78,7 +80,7 @@ def water_material():
     return mat
 
 
-def main():
+def main(bake=True):
     scene = bpy.context.scene
     remove_old()
     city = city_objects()
@@ -103,7 +105,8 @@ def main():
     frames = int(SECONDS * scene.render.fps)
     settings.cache_frame_start = 1
     settings.cache_frame_end = frames
-    settings.cache_type = "REPLAY"  # 再生するだけで計算される（最初の1回は少し遅い）
+    # 先に全部計算しておく方式。再生しながら計算する「リプレイ」は、弱いPCだと重くて止まりがち
+    settings.cache_type = "ALL"
     domain.data.materials.append(water_material())
     domain.display_type = "WIRE"
 
@@ -121,7 +124,20 @@ def main():
 
     scene.frame_start, scene.frame_end = 1, frames
     scene.frame_set(1)
-    print("水の準備ができました。再生ボタンを押してください（%d フレーム）" % frames)
+    if not bake:
+        print("水の準備ができました。ドメインの「すべてベイク」を押してください（%d フレーム）" % frames)
+        return
+    # 水の動きを計算する（画面の下に進み具合が出る）
+    with bpy.context.temp_override(
+        active_object=domain, object=domain, selected_objects=[domain]
+    ):
+        if bpy.app.background:
+            bpy.ops.fluid.bake_all()
+        else:
+            # 画面を止めずに裏で計算する（Esc で中止できる）
+            bpy.ops.fluid.bake_all("INVOKE_DEFAULT")
+    print("水の計算を始めました。終わったら再生ボタンを押してください（%d フレーム）" % frames)
 
 
-main()
+if __name__ == "__main__":
+    main()
